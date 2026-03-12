@@ -6,6 +6,7 @@
 <title>MILEAN - Юридическая Компания</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2376b900'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='22' fill='%230a0a0f'%3EM%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <style>
 :root{--bg:#0a0a0f;--s:#111118;--s2:#1a1a24;--bd:#2a2a3a;--ac:#76b900;--ac2:#a8e000;--t:#e8e8f0;--t2:#8888a0;--ub:#1e2a0e;--ab:#14141e;--gl:rgba(118,185,0,.15);--info:#4488ff}
 *{box-sizing:border-box;margin:0;padding:0}
@@ -191,6 +192,7 @@ select.hbtn option{background:var(--s);color:var(--t)}
 <option value="qwen/qwq-32b">QwQ 32B</option>
 </select>
 <label onclick="txtMode=!txtMode;this.querySelector('.ftog').classList.toggle('on',txtMode)" style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:10px;font-family:'Space Mono',monospace;color:var(--t2);padding:4px 0"><span class="ftog" id="txtTog">✓</span> TXT</label>
+<label onclick="docMode=!docMode;this.querySelector('.ftog').classList.toggle('on',docMode)" style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:10px;font-family:'Space Mono',monospace;color:var(--t2);padding:4px 0"><span class="ftog" id="docTog">✓</span> 📄 DOCX + PDF</label>
 </div>
 <div id="instrBar">
 <div class="ihead"><label>⚖️ MILEAN — Инструкция</label><div style="display:flex;gap:6px"><button id="instrEditBtn" onclick="toggleInstrEdit()" style="background:var(--s2);border:1px solid var(--bd);border-radius:5px;padding:2px 10px;font-size:10px;font-family:'Space Mono',monospace;color:var(--t2);cursor:pointer">✏️ Edit</button><button id="instrResetBtn" onclick="resetInstr()" style="background:var(--s2);border:1px solid var(--bd);border-radius:5px;padding:2px 10px;font-size:10px;font-family:'Space Mono',monospace;color:var(--t2);cursor:pointer;display:none">↩ Reset</button><button onclick="togInstr()" style="background:none;border:none;color:var(--t2);cursor:pointer;font-size:16px">✕</button></div></div>
@@ -259,7 +261,7 @@ window.addEventListener("unhandledrejection",function(e){
 });
 
 var API="/api/proxy",MDL="qwen/qwen3.5-397b-a17b";
-var hist=[],loading=false,files=[],ragSrc=[],allOn=true,thinkOn=false,txtMode=false;
+var hist=[],loading=false,files=[],ragSrc=[],allOn=true,thinkOn=false,txtMode=false,docMode=false;
 
 // === PROJECT MANAGEMENT ===
 var projects=[], activeProjectId=null;
@@ -501,6 +503,54 @@ function downloadTxt(text){
   document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(a.href);
 }
 
+function getTimestamp(){
+  var d=new Date();
+  return d.getFullYear()+"-"+(""+(d.getMonth()+1)).padStart(2,"0")+"-"+(""+d.getDate()).padStart(2,"0")+"_"+(""+d.getHours()).padStart(2,"0")+(""+d.getMinutes()).padStart(2,"0");
+}
+
+function downloadDocx(text){
+  var ts=getTimestamp();
+  var fn="milean_"+ts+".doc";
+  var htmlContent=text.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\n/g,"<br>");
+  var doc='<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">'+
+    '<head><meta charset="utf-8"><style>body{font-family:"Arial",sans-serif;font-size:12pt;line-height:1.8;color:#1a1a1a;padding:40px;}'+
+    'h1{font-size:18pt;color:#222;margin-bottom:10pt;}'+
+    '.header{text-align:center;color:#76b900;font-size:14pt;font-weight:bold;margin-bottom:20pt;border-bottom:2pt solid #76b900;padding-bottom:8pt;}'+
+    '.footer{margin-top:30pt;padding-top:8pt;border-top:1pt solid #ccc;font-size:9pt;color:#888;text-align:center;}'+
+    '</style></head><body>'+
+    '<div class="header">MILEAN — Юридическая Компания</div>'+
+    '<div>'+htmlContent+'</div>'+
+    '<div class="footer">Документ сгенерирован MILEAN AI · '+new Date().toLocaleString("ru-RU")+'</div>'+
+    '</body></html>';
+  var blob=new Blob(['\ufeff'+doc],{type:'application/msword;charset=utf-8'});
+  var a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=fn;
+  document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(a.href);
+}
+
+function downloadPdf(text){
+  var ts=getTimestamp();
+  var fn="milean_"+ts+".pdf";
+  var htmlContent=text.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\n/g,"<br>");
+  var container=document.createElement("div");
+  container.style.cssText="position:absolute;left:-9999px;top:0;width:700px;font-family:Arial,sans-serif;font-size:12pt;line-height:1.8;color:#1a1a1a;padding:30px;background:#fff;";
+  container.innerHTML='<div style="text-align:center;color:#76b900;font-size:16pt;font-weight:bold;margin-bottom:16px;border-bottom:2px solid #76b900;padding-bottom:8px;">MILEAN — Юридическая Компания</div>'+
+    '<div>'+htmlContent+'</div>'+
+    '<div style="margin-top:30px;padding-top:8px;border-top:1px solid #ccc;font-size:9pt;color:#888;text-align:center;">Документ сгенерирован MILEAN AI · '+new Date().toLocaleString("ru-RU")+'</div>';
+  document.body.appendChild(container);
+  var opt={margin:10,filename:fn,image:{type:'jpeg',quality:0.98},html2canvas:{scale:2,useCORS:true,logging:false},jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}};
+  html2pdf().set(opt).from(container).save().then(function(){
+    document.body.removeChild(container);
+  }).catch(function(e){
+    console.error("PDF error:",e);
+    document.body.removeChild(container);
+  });
+}
+
+function downloadDocs(text){
+  downloadDocx(text);
+  setTimeout(function(){downloadPdf(text)},500);
+}
+
 function showStatus(t){var s=document.getElementById("sbar"),st=document.getElementById("stxt");if(t){s.classList.add("v");st.textContent=t}else{s.classList.remove("v")}}
 function showErr(t){
   var msgs=document.getElementById("msgs");
@@ -616,6 +666,7 @@ function send(){
             document.getElementById("sdot").style.background="#76b900";
             console.log("Stream done, content len:",content.length,"think len:",think.length);
             if(txtMode) downloadTxt(content);
+            if(docMode) downloadDocs(content);
             saveCurrentState();renderProjects();
             return;
           }
