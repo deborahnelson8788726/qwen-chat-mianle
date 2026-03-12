@@ -10,12 +10,16 @@
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:var(--t);font-family:'Syne',sans-serif;height:100vh;display:flex;flex-direction:column;overflow:hidden}
 
-header{display:flex;align-items:center;gap:14px;padding:16px 24px;border-bottom:1px solid var(--bd);background:rgba(10,10,15,.9);backdrop-filter:blur(12px);flex-shrink:0;z-index:10}
-.logo{width:32px;height:32px;background:var(--ac);clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);display:flex;align-items:center;justify-content:center;flex-shrink:0}
-.logo-inner{width:14px;height:14px;background:var(--bg);clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%)}
-.hinfo h1{font-size:14px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
-.hinfo p{font-size:10px;color:var(--t2);font-family:'Space Mono',monospace}
-.hright{margin-left:auto;display:flex;align-items:center;gap:8px}
+.side-toggle{position:fixed;top:10px;left:10px;z-index:20;background:var(--s);border:1px solid var(--bd);border-radius:7px;padding:6px 10px;cursor:pointer;color:var(--t2);font-size:16px;display:flex;align-items:center;gap:6px;transition:all .2s}
+.side-toggle:hover{border-color:var(--ac);color:var(--ac)}
+.side-toggle.hidden{display:none}
+.side-brand{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--bd)}
+.logo{width:28px;height:28px;background:var(--ac);clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.logo-inner{width:12px;height:12px;background:var(--bg);clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%)}
+.side-brand h1{font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
+.side-brand p{font-size:9px;color:var(--t2);font-family:'Space Mono',monospace}
+.side-brand .close-side{margin-left:auto;background:none;border:none;color:var(--t2);cursor:pointer;font-size:16px}
+.side-nav{display:flex;flex-direction:column;gap:2px;padding:8px}
 .hbtn{display:flex;align-items:center;gap:5px;background:var(--s);border:1px solid var(--bd);border-radius:7px;padding:5px 10px;color:var(--t2);font-family:'Space Mono',monospace;font-size:10px;cursor:pointer}
 .hbtn:hover{border-color:var(--ac);color:var(--t)}
 select.hbtn{appearance:none;-webkit-appearance:none;padding-right:20px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238888a0'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 6px center}
@@ -31,8 +35,9 @@ select.hbtn option{background:var(--s);color:var(--t)}
 #keybar label{font-size:10px;font-family:'Space Mono',monospace;color:var(--ac);text-transform:uppercase;letter-spacing:.1em}
 #apiKey{flex:1;background:var(--s);border:1px solid var(--bd);border-radius:6px;color:var(--t2);font-family:'Space Mono',monospace;font-size:11px;padding:5px 10px;outline:none}
 
-#instrBar{display:none;flex-direction:column;gap:6px;padding:12px 24px;background:rgba(118,185,0,.03);border-bottom:1px solid var(--bd);flex-shrink:0}
+#instrBar{display:none;flex-direction:column;gap:6px;padding:8px 12px;background:rgba(118,185,0,.03);border-bottom:1px solid var(--bd);flex-shrink:0}
 #instrBar.open{display:flex}
+#instrTxt{min-height:40px;max-height:120px;font-size:12px}
 .ihead{display:flex;align-items:center;justify-content:space-between}
 .ihead label{font-size:10px;font-family:'Space Mono',monospace;color:var(--ac);text-transform:uppercase}
 .ihead button{background:none;border:none;color:var(--t2);cursor:pointer;font-size:16px}
@@ -44,7 +49,9 @@ select.hbtn option{background:var(--s);color:var(--t)}
 .prebtn{background:var(--s2);border:1px solid var(--bd);border-radius:5px;padding:2px 8px;font-size:9px;font-family:'Space Mono',monospace;color:var(--t2);cursor:pointer}
 .prebtn:hover{border-color:var(--ac);color:var(--ac)}
 
-#projPanel{width:240px;background:var(--s);border-right:1px solid var(--bd);display:none;flex-direction:column;flex-shrink:0}
+#sidebar{width:280px;background:var(--s);border-right:1px solid var(--bd);display:flex;flex-direction:column;flex-shrink:0;overflow:hidden;transition:width .2s,opacity .2s}
+#sidebar.closed{width:0;opacity:0;overflow:hidden;border:none}
+#projPanel{display:none;flex-direction:column;flex:1;overflow:hidden}
 #projPanel.open{display:flex}
 .pj-head{padding:14px 16px;border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between}
 .pj-head h3{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.08em}
@@ -66,7 +73,7 @@ select.hbtn option{background:var(--s);color:var(--t)}
 .pj-del:hover{color:#f55;background:rgba(255,85,85,.1)}
 .pj-empty{padding:20px 16px;text-align:center;color:var(--t2);font-size:11px}
 .main{flex:1;display:flex;overflow:hidden}
-#fpanel{width:320px;background:var(--s);border-right:1px solid var(--bd);display:none;flex-direction:column;flex-shrink:0}
+#fpanel{display:none;flex-direction:column;flex:1;overflow:hidden}
 #fpanel.open{display:flex}
 .phead{padding:14px 16px;border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between}
 .phead h3{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.08em}
@@ -160,24 +167,28 @@ select.hbtn option{background:var(--s);color:var(--t)}
 </style>
 </head>
 <body>
-<header>
+<button class="side-toggle" id="sideToggle" onclick="toggleSidebar()">☰</button>
+<div id="keybar" style="display:none"><input type="password" id="apiKey" value="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"/></div>
+<div class="main">
+<div id="sidebar">
+<div class="side-brand">
 <div class="logo"><div class="logo-inner"></div></div>
-<div class="hinfo"><h1>Юридическая Компания MILEAN</h1><p id="mdlLabel">RAG</p></div>
-<div class="hright">
-<select id="mdlSel" class="hbtn" onchange="MDL=this.value;document.getElementById('mdlLabel').textContent=this.value+' · RAG'">
+<div><h1>MILEAN</h1><p id="mdlLabel">RAG</p></div>
+<button class="close-side" onclick="toggleSidebar()">✕</button>
+</div>
+<div class="side-nav">
+<select id="mdlSel" class="hbtn" style="width:100%" onchange="MDL=this.value;document.getElementById('mdlLabel').textContent=this.value.split('/')[1]">
 <option value="qwen/qwen3.5-397b-a17b" selected>Qwen 3.5 397B</option>
 <option value="qwen/qwen2.5-coder-32b-instruct">Qwen 2.5 Coder 32B</option>
 <option value="qwen/qwen2.5-7b-instruct">Qwen 2.5 7B</option>
 <option value="qwen/qwen3.5-122b-a10b">Qwen 3.5 122B</option>
 <option value="qwen/qwq-32b">QwQ 32B</option>
 </select>
-<button class="hbtn" id="pjbtn" onclick="togProj()">📂 Проекты</button>
-<button class="hbtn" id="ibtn" onclick="togInstr()">📝 Инструкция <span class="dot" id="idot"></span></button>
-<button class="hbtn" id="fbtn" onclick="togFiles()">📁 Файлы <span class="badge" id="fbadge">0</span></button>
-<div class="sdot" id="sdot"></div>
+<button class="hbtn" style="width:100%" id="pjbtn" onclick="togProj()">📂 Проекты</button>
+<button class="hbtn" style="width:100%" id="ibtn" onclick="togInstr()">📝 Инструкция <span class="dot" id="idot"></span></button>
+<button class="hbtn" style="width:100%" id="fbtn" onclick="togFiles()">📁 Файлы <span class="badge" id="fbadge">0</span></button>
+<div style="display:flex;align-items:center;gap:6px;padding:4px 0"><div class="sdot" id="sdot"></div><span style="font-size:9px;font-family:'Space Mono',monospace;color:var(--t2)">Статус</span></div>
 </div>
-</header>
-<div id="keybar" style="display:none"><label>API KEY</label><input type="password" id="apiKey" value="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"/></div>
 <div id="instrBar">
 <div class="ihead"><label>📝 Инструкция</label><button onclick="togInstr()">✕</button></div>
 <textarea id="instrTxt" placeholder="Например: Ты — опытный юрист. Анализируй документы..."></textarea>
@@ -188,12 +199,11 @@ select.hbtn option{background:var(--s);color:var(--t)}
 <button class="prebtn" onclick="pre('lawyer')">Юрист</button>
 </div></div>
 </div>
-<div class="main">
 <div id="projPanel">
-<div class="pj-head"><h3>📂 Проекты</h3><div style="display:flex;gap:6px"><button class="pj-add" onclick="createProject()" title="Новый проект">+</button><button class="pclose" onclick="togProj()">✕</button></div></div>
+<div class="pj-head"><h3>📂 Проекты</h3><button class="pj-add" onclick="createProject()" title="Новый проект">+</button></div>
 <div class="pj-list" id="pjList"><div class="pj-empty">Нет проектов</div></div>
 </div>
-<div id="fpanel">
+<div id="fpanel" style="border-right:none">
 <div class="phead"><h3>📁 База знаний</h3><button class="pclose" onclick="togFiles()">✕</button></div>
 <div class="rstats"><div class="rstat"><div class="rsv" id="sf">0</div><div class="rsl">Файлов</div></div>
 <div class="rstat"><div class="rsv" id="sc">0</div><div class="rsl">Фрагм.</div></div>
@@ -209,6 +219,7 @@ select.hbtn option{background:var(--s);color:var(--t)}
 <input type="file" id="fi" multiple hidden/>
 </div>
 <div class="flist" id="flist"><div class="fempty" id="fempty">🔍 Загрузите файлы для RAG</div></div>
+</div>
 </div>
 <div class="chat">
 <div id="msgs">
@@ -307,8 +318,17 @@ function renameProject(id){
 }
 function togProj(){
   var panel=document.getElementById("projPanel");
-  panel.classList.toggle("open");
+  var fp=document.getElementById("fpanel");
+  if(panel.classList.contains("open")){panel.classList.remove("open")}
+  else{panel.classList.add("open");fp.classList.remove("open")}
   document.getElementById("pjbtn").classList.toggle("on",panel.classList.contains("open"));
+  document.getElementById("fbtn").classList.toggle("on",fp.classList.contains("open"));
+}
+function toggleSidebar(){
+  var sb=document.getElementById("sidebar");
+  var tog=document.getElementById("sideToggle");
+  sb.classList.toggle("closed");
+  tog.classList.toggle("hidden",!sb.classList.contains("closed"));
 }
 function renderProjects(){
   var list=document.getElementById("pjList");
@@ -345,9 +365,12 @@ function togInstr(){
 function pre(k){document.getElementById("instrTxt").value=PR[k]||"";updDot()}
 function updDot(){document.getElementById("idot").classList.toggle("v",document.getElementById("instrTxt").value.trim().length>0)}
 function togFiles(){
-  var p=document.getElementById("fpanel");
-  p.classList.toggle("open");
-  document.getElementById("fbtn").classList.toggle("on",p.classList.contains("open"));
+  var fp=document.getElementById("fpanel");
+  var pp=document.getElementById("projPanel");
+  if(fp.classList.contains("open")){fp.classList.remove("open")}
+  else{fp.classList.add("open");pp.classList.remove("open")}
+  document.getElementById("fbtn").classList.toggle("on",fp.classList.contains("open"));
+  document.getElementById("pjbtn").classList.toggle("on",pp.classList.contains("open"));
 }
 
 // File upload
