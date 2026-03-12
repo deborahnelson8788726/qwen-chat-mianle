@@ -12,6 +12,7 @@
 <script>if(window.pdfjsLib)pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";</script>
 <style>
 :root{--bg:#0a0a0f;--s:#111118;--s2:#1a1a24;--bd:#2a2a3a;--ac:#76b900;--ac2:#a8e000;--t:#e8e8f0;--t2:#8888a0;--ub:#1e2a0e;--ab:#14141e;--gl:rgba(118,185,0,.15);--info:#4488ff}
+body.light{--bg:#f0f1f4;--s:#ffffff;--s2:#e8e9ed;--bd:#d0d1d8;--ac:#4a8c00;--ac2:#5ea600;--t:#1a1a2e;--t2:#6a6a80;--ub:#e8f5d0;--ab:#f5f5fa;--gl:rgba(74,140,0,.15);--info:#2266dd}
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:var(--t);font-family:'Syne',sans-serif;height:100vh;display:flex;flex-direction:column;overflow:hidden}
 
@@ -192,10 +193,18 @@ select.hbtn option{background:var(--s);color:var(--t)}
 .tswitch-track.on .tswitch-thumb{left:18px;background:#fff}
 .tswitch-label{font-size:10px;font-family:'Space Mono',monospace;color:var(--t2);transition:color .2s}
 .tswitch-track.on+.tswitch-label{color:var(--ac)}
+.theme-toggle{position:fixed;top:10px;right:10px;z-index:20;background:var(--s);border:1px solid var(--bd);border-radius:7px;padding:5px 10px;cursor:pointer;color:var(--t2);font-size:14px;display:flex;align-items:center;gap:5px;transition:all .2s}
+.theme-toggle:hover{border-color:var(--ac);color:var(--ac)}
+.theme-toggle span{font-size:10px;font-family:'Space Mono',monospace}
+body.light .m.u .mb{color:#3a5a10}
+body.light #sbtn svg{fill:#fff}
+body.light .logo{background:var(--ac)}
+body.light .sdot{background:var(--ac);box-shadow:0 0 6px var(--ac)}
 </style>
 </head>
 <body>
 <button class="side-toggle" id="sideToggle" onclick="toggleSidebar()">☰</button>
+<button class="theme-toggle" id="themeToggle" onclick="toggleTheme()">🌙 <span>Тема</span></button>
 <div id="keybar" style="display:none"><input type="password" id="apiKey" value="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"/></div>
 <div class="main">
 <div id="sidebar">
@@ -292,7 +301,23 @@ window.addEventListener("unhandledrejection",function(e){
 });
 
 var API="/api/proxy",MDL="qwen/qwen3.5-397b-a17b";
-var hist=[],loading=false,files=[],ragSrc=[],allOn=true,thinkOn=false,txtMode=false,docMode=false;
+var hist=[],loading=false,files=[],ragSrc=[],allOn=true,thinkOn=true,txtMode=false,docMode=false;
+
+// Theme
+function toggleTheme(){
+  var isLight=document.body.classList.toggle("light");
+  localStorage.setItem("milean_theme",isLight?"light":"dark");
+  var btn=document.getElementById("themeToggle");
+  btn.innerHTML=isLight?'☀️ <span>Тема</span>':'🌙 <span>Тема</span>';
+}
+(function initTheme(){
+  var saved=localStorage.getItem("milean_theme");
+  if(saved==="light"){
+    document.body.classList.add("light");
+    var btn=document.getElementById("themeToggle");
+    if(btn) btn.innerHTML='☀️ <span>Тема</span>';
+  }
+})();
 
 // === INDEXEDDB CLIENT-SIDE FILE STORAGE ===
 var MILEAN_DB_NAME="milean_files_db",MILEAN_DB_VER=1;
@@ -1065,6 +1090,8 @@ if(ap){
   if(ap.chatHTML) document.getElementById("msgs").innerHTML=ap.chatHTML;
 }
 renderProjects();render();localStats();updateProjectLabel();
+// Think always ON on load
+(function(){var tt=document.getElementById("thinkToggle");if(tt){var tr=tt.querySelector(".tswitch-track");if(tr)tr.classList.add("on")}})();
 document.getElementById("instrTxt").addEventListener("input",updDot);
 // Auto-save state periodically and on close
 setInterval(saveCurrentState,10000);
