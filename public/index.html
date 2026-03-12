@@ -44,6 +44,27 @@ select.hbtn option{background:var(--s);color:var(--t)}
 .prebtn{background:var(--s2);border:1px solid var(--bd);border-radius:5px;padding:2px 8px;font-size:9px;font-family:'Space Mono',monospace;color:var(--t2);cursor:pointer}
 .prebtn:hover{border-color:var(--ac);color:var(--ac)}
 
+#projPanel{width:240px;background:var(--s);border-right:1px solid var(--bd);display:none;flex-direction:column;flex-shrink:0}
+#projPanel.open{display:flex}
+.pj-head{padding:14px 16px;border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between}
+.pj-head h3{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.08em}
+.pj-add{background:var(--ac);border:none;color:var(--bg);width:22px;height:22px;border-radius:5px;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:700}
+.pj-add:hover{background:var(--ac2)}
+.pj-list{flex:1;overflow-y:auto;padding:4px 0}
+.pj-list::-webkit-scrollbar{width:3px}
+.pj-list::-webkit-scrollbar-thumb{background:var(--bd);border-radius:2px}
+.pj-item{display:flex;align-items:center;gap:8px;padding:10px 16px;cursor:pointer;transition:background .15s;border-left:3px solid transparent}
+.pj-item:hover{background:var(--s2)}
+.pj-item.active{border-left-color:var(--ac);background:rgba(118,185,0,.06)}
+.pj-item.active .pj-name{color:var(--ac)}
+.pj-icon{font-size:16px;flex-shrink:0}
+.pj-info{flex:1;min-width:0}
+.pj-name{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pj-meta{font-size:9px;font-family:'Space Mono',monospace;color:var(--t2);margin-top:2px}
+.pj-del{background:none;border:none;color:var(--t2);cursor:pointer;font-size:12px;padding:2px 4px;border-radius:3px;opacity:0;flex-shrink:0}
+.pj-item:hover .pj-del{opacity:1}
+.pj-del:hover{color:#f55;background:rgba(255,85,85,.1)}
+.pj-empty{padding:20px 16px;text-align:center;color:var(--t2);font-size:11px}
 .main{flex:1;display:flex;overflow:hidden}
 #fpanel{width:320px;background:var(--s);border-right:1px solid var(--bd);display:none;flex-direction:column;flex-shrink:0}
 #fpanel.open{display:flex}
@@ -150,6 +171,7 @@ select.hbtn option{background:var(--s);color:var(--t)}
 <option value="qwen/qwen3.5-122b-a10b">Qwen 3.5 122B</option>
 <option value="qwen/qwq-32b">QwQ 32B</option>
 </select>
+<button class="hbtn" id="pjbtn" onclick="togProj()">📂 Проекты</button>
 <button class="hbtn" id="ibtn" onclick="togInstr()">📝 Инструкция <span class="dot" id="idot"></span></button>
 <button class="hbtn" id="fbtn" onclick="togFiles()">📁 Файлы <span class="badge" id="fbadge">0</span></button>
 <div class="sdot" id="sdot"></div>
@@ -167,6 +189,10 @@ select.hbtn option{background:var(--s);color:var(--t)}
 </div></div>
 </div>
 <div class="main">
+<div id="projPanel">
+<div class="pj-head"><h3>📂 Проекты</h3><div style="display:flex;gap:6px"><button class="pj-add" onclick="createProject()" title="Новый проект">+</button><button class="pclose" onclick="togProj()">✕</button></div></div>
+<div class="pj-list" id="pjList"><div class="pj-empty">Нет проектов</div></div>
+</div>
 <div id="fpanel">
 <div class="phead"><h3>📁 База знаний</h3><button class="pclose" onclick="togFiles()">✕</button></div>
 <div class="rstats"><div class="rstat"><div class="rsv" id="sf">0</div><div class="rsl">Файлов</div></div>
@@ -216,6 +242,93 @@ window.addEventListener("unhandledrejection",function(e){
 
 var API="/api/proxy",MDL="qwen/qwen3.5-397b-a17b";
 var hist=[],loading=false,files=[],ragSrc=[],allOn=true,thinkOn=false;
+
+// === PROJECT MANAGEMENT ===
+var projects=[], activeProjectId=null;
+function genId(){return Date.now().toString(36)+Math.random().toString(36).substr(2,5)}
+function loadProjects(){
+  try{projects=JSON.parse(localStorage.getItem("milean_projects"))||[]}catch(e){projects=[]}
+  activeProjectId=localStorage.getItem("milean_active_project")||null;
+  if(!projects.length) createProject("Новый проект",true);
+  if(!activeProjectId||!projects.find(function(p){return p.id===activeProjectId})) activeProjectId=projects[0].id;
+}
+function saveProjects(){
+  localStorage.setItem("milean_projects",JSON.stringify(projects));
+  localStorage.setItem("milean_active_project",activeProjectId);
+}
+function getActiveProject(){return projects.find(function(p){return p.id===activeProjectId})||projects[0]}
+function saveCurrentState(){
+  var p=getActiveProject();if(!p)return;
+  p.hist=hist.slice();
+  p.files=files.slice();
+  p.instr=document.getElementById("instrTxt").value;
+  // Save chat HTML
+  var msgs=document.getElementById("msgs");
+  p.chatHTML=msgs.innerHTML;
+  saveProjects();
+}
+function createProject(name,silent){
+  if(!name&&!silent){name=prompt("Название проекта:","Проект "+(projects.length+1));if(!name)return}
+  if(!name)name="Новый проект";
+  saveCurrentState();
+  var p={id:genId(),name:name,hist:[],files:[],instr:"",chatHTML:"",created:Date.now()};
+  projects.push(p);
+  activeProjectId=p.id;
+  hist=[];files=[];
+  document.getElementById("instrTxt").value="";
+  document.getElementById("msgs").innerHTML='<div id="welcome"><h2>Привет, я <span>MILEAN</span> твой агент</h2><p>Загрузите файлы — я проанализирую и помогу</p></div>';
+  saveProjects();renderProjects();render();stats();updDot();
+}
+function switchProject(id){
+  if(id===activeProjectId)return;
+  saveCurrentState();
+  activeProjectId=id;
+  var p=getActiveProject();
+  hist=p.hist||[];
+  files=p.files||[];
+  document.getElementById("instrTxt").value=p.instr||"";
+  // Restore chat
+  var msgs=document.getElementById("msgs");
+  if(p.chatHTML){msgs.innerHTML=p.chatHTML}
+  else{msgs.innerHTML='<div id="welcome"><h2>Привет, я <span>MILEAN</span> твой агент</h2><p>Загрузите файлы — я проанализирую и помогу</p></div>'}
+  saveProjects();renderProjects();render();stats();updDot();
+}
+function deleteProject(id){
+  if(projects.length<=1){alert("Нельзя удалить единственный проект");return}
+  if(!confirm("Удалить проект?"))return;
+  projects=projects.filter(function(p){return p.id!==id});
+  if(activeProjectId===id){activeProjectId=projects[0].id;switchProject(activeProjectId)}
+  saveProjects();renderProjects();
+}
+function renameProject(id){
+  var p=projects.find(function(x){return x.id===id});if(!p)return;
+  var n=prompt("Новое название:",p.name);if(!n)return;
+  p.name=n;saveProjects();renderProjects();
+}
+function togProj(){
+  var panel=document.getElementById("projPanel");
+  panel.classList.toggle("open");
+  document.getElementById("pjbtn").classList.toggle("on",panel.classList.contains("open"));
+}
+function renderProjects(){
+  var list=document.getElementById("pjList");
+  list.innerHTML="";
+  if(!projects.length){list.innerHTML='<div class="pj-empty">Нет проектов</div>';return}
+  for(var i=0;i<projects.length;i++){
+    var p=projects[i];
+    var isActive=p.id===activeProjectId;
+    var el=document.createElement("div");
+    el.className="pj-item"+(isActive?" active":"");
+    el.onclick=(function(pid){return function(e){if(e.target.closest(".pj-del"))return;switchProject(pid)}})(p.id);
+    var fc=p.files?p.files.length:0;
+    var mc=p.hist?Math.floor(p.hist.length/2):0;
+    el.innerHTML='<span class="pj-icon">📁</span>'+
+      '<div class="pj-info"><div class="pj-name" ondblclick="event.stopPropagation();renameProject(\''+p.id+'\')">'+p.name+'</div>'+
+      '<div class="pj-meta">'+fc+' файл. · '+mc+' сообщ.</div></div>'+
+      '<button class="pj-del" onclick="event.stopPropagation();deleteProject(\''+p.id+'\')" title="Удалить">✕</button>';
+    list.appendChild(el);
+  }
+}
 var PR={
   coder:"Ты — программист. Пиши чистый код. Кратко.",
   writer:"Ты — писатель. Улучшай стиль, исправляй ошибки.",
@@ -427,6 +540,7 @@ function send(){
             loading=false;document.getElementById("sbtn").disabled=false;
             document.getElementById("sdot").style.background="#76b900";
             console.log("Stream done, content len:",content.length,"think len:",think.length);
+            saveCurrentState();renderProjects();
             return;
           }
           buf+=decoder.decode(res.value,{stream:true});
@@ -544,8 +658,19 @@ send=function(){
 };
 
 // Init
+loadProjects();
+var ap=getActiveProject();
+if(ap){
+  hist=ap.hist||[];files=ap.files||[];
+  document.getElementById("instrTxt").value=ap.instr||"";
+  if(ap.chatHTML) document.getElementById("msgs").innerHTML=ap.chatHTML;
+}
+renderProjects();render();
 fetch("/api/files").then(function(r){return r.json()}).then(function(d){files=d;render();stats()}).catch(function(){});
 document.getElementById("instrTxt").addEventListener("input",updDot);
+// Auto-save state periodically and on close
+setInterval(saveCurrentState,10000);
+window.addEventListener("beforeunload",saveCurrentState);
 </script>
 </body>
 </html>
