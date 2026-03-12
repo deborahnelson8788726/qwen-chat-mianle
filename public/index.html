@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Qwen Chat + RAG</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0a0a0f;--s:#111118;--s2:#1a1a24;--bd:#2a2a3a;--ac:#76b900;--ac2:#a8e000;--t:#e8e8f0;--t2:#8888a0;--ub:#1e2a0e;--ab:#14141e;--gl:rgba(118,185,0,.15);--info:#4488ff}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--t);font-family:'Syne',sans-serif;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+
+header{display:flex;align-items:center;gap:14px;padding:16px 24px;border-bottom:1px solid var(--bd);background:rgba(10,10,15,.9);backdrop-filter:blur(12px);flex-shrink:0;z-index:10}
+.logo{width:32px;height:32px;background:var(--ac);clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.logo-inner{width:14px;height:14px;background:var(--bg);clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%)}
+.hinfo h1{font-size:14px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+.hinfo p{font-size:10px;color:var(--t2);font-family:'Space Mono',monospace}
+.hright{margin-left:auto;display:flex;align-items:center;gap:8px}
+.hbtn{display:flex;align-items:center;gap:5px;background:var(--s);border:1px solid var(--bd);border-radius:7px;padding:5px 10px;color:var(--t2);font-family:'Space Mono',monospace;font-size:10px;cursor:pointer}
+.hbtn:hover{border-color:var(--ac);color:var(--t)}
+select.hbtn{appearance:none;-webkit-appearance:none;padding-right:20px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238888a0'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 6px center}
+select.hbtn option{background:var(--s);color:var(--t)}
+.hbtn.on{border-color:var(--ac);background:rgba(118,185,0,.1);color:var(--ac)}
+.badge{background:var(--ac);color:var(--bg);font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px;display:none}
+.badge.v{display:inline}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--ac);display:none;box-shadow:0 0 6px var(--ac)}
+.dot.v{display:inline-block}
+.sdot{width:7px;height:7px;border-radius:50%;background:var(--ac);box-shadow:0 0 8px var(--ac);margin-left:4px}
+
+#keybar{display:flex;align-items:center;gap:10px;padding:8px 24px;background:rgba(118,185,0,.05);border-bottom:1px solid rgba(118,185,0,.15);flex-shrink:0}
+#keybar label{font-size:10px;font-family:'Space Mono',monospace;color:var(--ac);text-transform:uppercase;letter-spacing:.1em}
+#apiKey{flex:1;background:var(--s);border:1px solid var(--bd);border-radius:6px;color:var(--t2);font-family:'Space Mono',monospace;font-size:11px;padding:5px 10px;outline:none}
+
+#instrBar{display:none;flex-direction:column;gap:6px;padding:12px 24px;background:rgba(118,185,0,.03);border-bottom:1px solid var(--bd);flex-shrink:0}
+#instrBar.open{display:flex}
+.ihead{display:flex;align-items:center;justify-content:space-between}
+.ihead label{font-size:10px;font-family:'Space Mono',monospace;color:var(--ac);text-transform:uppercase}
+.ihead button{background:none;border:none;color:var(--t2);cursor:pointer;font-size:16px}
+#instrTxt{background:var(--s);border:1px solid var(--bd);border-radius:7px;color:var(--t);font-family:'Syne',sans-serif;font-size:13px;padding:8px 12px;outline:none;resize:vertical;min-height:50px;max-height:180px;line-height:1.5}
+#instrTxt::placeholder{color:var(--t2)}
+.ifoot{display:flex;align-items:center;justify-content:space-between}
+.ifoot span{font-size:9px;font-family:'Space Mono',monospace;color:var(--t2)}
+.presets{display:flex;gap:5px}
+.prebtn{background:var(--s2);border:1px solid var(--bd);border-radius:5px;padding:2px 8px;font-size:9px;font-family:'Space Mono',monospace;color:var(--t2);cursor:pointer}
+.prebtn:hover{border-color:var(--ac);color:var(--ac)}
+
+.main{flex:1;display:flex;overflow:hidden}
+#fpanel{width:320px;background:var(--s);border-right:1px solid var(--bd);display:none;flex-direction:column;flex-shrink:0}
+#fpanel.open{display:flex}
+.phead{padding:14px 16px;border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between}
+.phead h3{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.08em}
+.pclose{background:none;border:none;color:var(--t2);cursor:pointer;font-size:16px}
+
+.rstats{padding:10px 16px;border-bottom:1px solid var(--bd);display:flex;gap:10px;align-items:center}
+.rstat{display:flex;flex-direction:column;gap:1px}
+.rsv{font-size:15px;font-weight:800;color:var(--ac);font-family:'Space Mono',monospace}
+.rsl{font-size:8px;font-family:'Space Mono',monospace;color:var(--t2);text-transform:uppercase}
+.rbadge{background:rgba(68,136,255,.1);border:1px solid rgba(68,136,255,.25);border-radius:5px;padding:2px 7px;font-size:9px;font-family:'Space Mono',monospace;color:var(--info);margin-left:auto}
+
+.sabar{padding:6px 16px;border-bottom:1px solid var(--bd);display:flex;align-items:center}
+.sabtn{display:flex;align-items:center;gap:5px;background:none;border:1px solid var(--bd);border-radius:5px;padding:3px 8px;color:var(--t2);font-family:'Space Mono',monospace;font-size:9px;cursor:pointer}
+.sabtn:hover{border-color:var(--ac);color:var(--ac)}
+.sack{width:13px;height:13px;border-radius:3px;border:1px solid var(--bd);display:flex;align-items:center;justify-content:center;font-size:8px;color:transparent}
+.sack.on{background:var(--ac);border-color:var(--ac);color:var(--bg)}
+
+.uarea{padding:10px 16px;border-bottom:1px solid var(--bd)}
+.udrop{border:2px dashed var(--bd);border-radius:8px;padding:16px;text-align:center;cursor:pointer;transition:all .2s}
+.udrop:hover,.udrop.drag{border-color:var(--ac);background:rgba(118,185,0,.05)}
+.udrop p{font-size:12px;color:var(--t2)}
+.udrop strong{color:var(--ac)}
+.uhint{font-size:9px;font-family:'Space Mono',monospace;color:var(--t2);margin-top:5px;opacity:.6}
+.uprog{display:none;align-items:center;gap:6px;padding:6px 0;font-size:10px;font-family:'Space Mono',monospace;color:var(--ac)}
+.uprog.on{display:flex}
+.spin{width:12px;height:12px;border:2px solid var(--bd);border-top-color:var(--ac);border-radius:50%;animation:sp .8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+.flist{flex:1;overflow-y:auto;padding:3px 0}
+.flist::-webkit-scrollbar{width:3px}
+.flist::-webkit-scrollbar-thumb{background:var(--bd);border-radius:2px}
+.fitem{display:flex;align-items:center;gap:7px;padding:6px 16px;transition:background .15s}
+.fitem:hover{background:var(--s2)}
+.fitem.off{opacity:.3}
+.ftog{width:14px;height:14px;border-radius:3px;border:1px solid var(--bd);background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:9px;color:transparent}
+.ftog.on{background:var(--ac);border-color:var(--ac);color:var(--bg)}
+.ficon{width:24px;height:24px;background:rgba(118,185,0,.1);border:1px solid rgba(118,185,0,.2);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0}
+.ficon.pdf{background:rgba(220,50,50,.1);border-color:rgba(220,50,50,.25)}
+.ficon.doc{background:rgba(50,100,220,.1);border-color:rgba(50,100,220,.25)}
+.finf{flex:1;min-width:0}
+.fname{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fsize{font-size:8px;font-family:'Space Mono',monospace;color:var(--t2);margin-top:1px}
+.frem{background:none;border:none;color:var(--t2);cursor:pointer;font-size:13px;padding:2px 5px;border-radius:3px;opacity:0}
+.fitem:hover .frem{opacity:1}
+.frem:hover{color:#f55;background:rgba(255,85,85,.1)}
+.fempty{padding:24px 16px;text-align:center;color:var(--t2);font-size:12px}
+
+.chat{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+#msgs{flex:1;overflow-y:auto;padding:24px;display:flex;flex-direction:column;gap:18px}
+#msgs::-webkit-scrollbar{width:3px}
+#msgs::-webkit-scrollbar-thumb{background:var(--bd);border-radius:2px}
+
+.m{display:flex;flex-direction:column;gap:5px;animation:fu .3s;max-width:78%}
+@keyframes fu{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.m.u{align-self:flex-end;align-items:flex-end}
+.m.a{align-self:flex-start;align-items:flex-start}
+.ml{font-size:9px;font-family:'Space Mono',monospace;color:var(--t2);text-transform:uppercase;letter-spacing:.1em}
+.m.u .ml{color:var(--ac)}
+.mb{padding:12px 16px;border-radius:4px 16px 16px 16px;font-size:14px;line-height:1.7;white-space:pre-wrap;word-break:break-word}
+.m.u .mb{background:var(--ub);border:1px solid rgba(118,185,0,.25);border-radius:16px 4px 16px 16px;color:#c8e88a}
+.m.a .mb{background:var(--ab);border:1px solid var(--bd)}
+.rsrcs{display:flex;flex-wrap:wrap;gap:3px;margin-top:5px}
+.rsrc{font-size:9px;font-family:'Space Mono',monospace;background:rgba(68,136,255,.08);border:1px solid rgba(68,136,255,.2);border-radius:3px;padding:1px 5px;color:var(--info)}
+.thblk{background:rgba(118,185,0,.04);border:1px solid rgba(118,185,0,.12);border-radius:4px;padding:8px 12px;margin-bottom:6px;font-size:11px;font-family:'Space Mono',monospace;color:var(--t2);max-height:100px;overflow-y:auto;white-space:pre-wrap;word-break:break-word}
+.thl{font-size:9px;color:rgba(118,185,0,.5);text-transform:uppercase;margin-bottom:4px}
+.tdots{display:flex;gap:5px;padding:14px 18px}
+.tdots span{width:6px;height:6px;border-radius:50%;background:var(--ac);animation:bn 1.2s ease-in-out infinite}
+.tdots span:nth-child(2){animation-delay:.15s}
+.tdots span:nth-child(3){animation-delay:.3s}
+@keyframes bn{0%,60%,100%{transform:translateY(0);opacity:.4}30%{transform:translateY(-6px);opacity:1}}
+
+#welcome{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;color:var(--t2)}
+#welcome h2{font-size:26px;font-weight:800;color:var(--t)}
+#welcome h2 span{color:var(--ac)}
+#welcome p{font-size:13px;max-width:340px;line-height:1.6}
+
+#ibar{padding:16px 24px;border-top:1px solid var(--bd);background:rgba(10,10,15,.95);flex-shrink:0;z-index:10}
+#sbar{display:none;align-items:center;gap:6px;padding:6px 10px;background:rgba(68,136,255,.08);border:1px solid rgba(68,136,255,.2);border-radius:7px;margin-bottom:8px;font-size:10px;font-family:'Space Mono',monospace;color:var(--info)}
+#sbar.v{display:flex}
+.iwrap{display:flex;align-items:flex-end;gap:10px;background:var(--s);border:1px solid var(--bd);border-radius:10px;padding:10px 14px;transition:border-color .2s,box-shadow .2s}
+.iwrap:focus-within{border-color:var(--ac);box-shadow:0 0 0 3px var(--gl)}
+#inp{flex:1;background:transparent;border:none;outline:none;color:var(--t);font-family:'Syne',sans-serif;font-size:14px;resize:none;max-height:100px;line-height:1.5}
+#inp::placeholder{color:var(--t2)}
+#sbtn{width:34px;height:34px;background:var(--ac);border:none;border-radius:7px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s}
+#sbtn:hover{background:var(--ac2)}
+#sbtn:disabled{background:var(--bd);cursor:not-allowed}
+#sbtn svg{fill:var(--bg)}
+.imeta{display:flex;justify-content:space-between;margin-top:6px;padding:0 4px}
+.imeta span{font-size:10px;font-family:'Space Mono',monospace;color:var(--t2)}
+.err{background:rgba(220,50,50,.08);border:1px solid rgba(220,50,50,.25);color:#ff7070;padding:10px 14px;border-radius:7px;font-size:12px;font-family:'Space Mono',monospace}
+</style>
+</head>
+<body>
+<header>
+<div class="logo"><div class="logo-inner"></div></div>
+<div class="hinfo"><h1>Юридическая Компания МИАНЛЕ</h1><p id="mdlLabel">RAG</p></div>
+<div class="hright">
+<select id="mdlSel" class="hbtn" onchange="MDL=this.value;document.getElementById('mdlLabel').textContent=this.value+' · RAG'">
+<option value="qwen/qwen2.5-coder-32b-instruct">Qwen 2.5 Coder 32B</option>
+<option value="qwen/qwen2.5-7b-instruct">Qwen 2.5 7B</option>
+<option value="qwen/qwen3.5-122b-a10b">Qwen 3.5 122B</option>
+<option value="qwen/qwen3.5-397b-a17b">Qwen 3.5 397B</option>
+<option value="qwen/qwq-32b">QwQ 32B</option>
+</select>
+<button class="hbtn" id="ibtn" onclick="togInstr()">📝 Инструкция <span class="dot" id="idot"></span></button>
+<button class="hbtn" id="fbtn" onclick="togFiles()">📁 Файлы <span class="badge" id="fbadge">0</span></button>
+<div class="sdot" id="sdot"></div>
+</div>
+</header>
+<div id="keybar"><label>API KEY</label><input type="password" id="apiKey" placeholder="nvapi-..." value="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"/></div>
+<div id="instrBar">
+<div class="ihead"><label>📝 Инструкция</label><button onclick="togInstr()">✕</button></div>
+<textarea id="instrTxt" placeholder="Например: Ты — опытный юрист. Анализируй документы..."></textarea>
+<div class="ifoot"><span>С каждым сообщением</span><div class="presets">
+<button class="prebtn" onclick="pre('coder')">Кодер</button>
+<button class="prebtn" onclick="pre('writer')">Писатель</button>
+<button class="prebtn" onclick="pre('analyst')">Аналитик</button>
+<button class="prebtn" onclick="pre('lawyer')">Юрист</button>
+</div></div>
+</div>
+<div class="main">
+<div id="fpanel">
+<div class="phead"><h3>📁 База знаний</h3><button class="pclose" onclick="togFiles()">✕</button></div>
+<div class="rstats"><div class="rstat"><div class="rsv" id="sf">0</div><div class="rsl">Файлов</div></div>
+<div class="rstat"><div class="rsv" id="sc">0</div><div class="rsl">Фрагм.</div></div>
+<div class="rstat"><div class="rsv" id="sk">0K</div><div class="rsl">Симв.</div></div>
+<div class="rbadge">🔍 RAG</div></div>
+<div class="sabar"><button class="sabtn" onclick="togAll()"><span class="sack on" id="sack">✓</span><span id="sal">Все вкл.</span></button></div>
+<div class="uarea">
+<div class="udrop" id="dz" onclick="document.getElementById('fi').click()">
+<p>Перетащите или <strong>выберите</strong></p>
+</div>
+<div class="uhint">PDF, DOCX, JPG/PNG, TXT, PY, JS, JSON...</div>
+<div class="uprog" id="uprog"><div class="spin"></div><span>Загрузка...</span></div>
+<input type="file" id="fi" multiple hidden/>
+</div>
+<div class="flist" id="flist"><div class="fempty" id="fempty">🔍 Загрузите файлы для RAG</div></div>
+</div>
+<div class="chat">
+<div id="msgs">
+<div id="welcome"><h2>Привет, я <span>Qwen</span></h2><p>Загрузите файлы — RAG найдёт нужные фрагменты</p></div>
+</div>
+<div id="ibar">
+<div id="sbar"><div class="spin"></div><span id="stxt"></span></div>
+<div class="iwrap">
+<textarea id="inp" rows="1" placeholder="Задайте вопрос..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();send()}" oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,100)+'px'"></textarea>
+<button id="sbtn" onclick="send()"><svg width="16" height="16" viewBox="0 0 24 24"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg></button>
+</div>
+<div class="imeta"><span>🔍 RAG</span><span style="cursor:pointer" id="thinkToggle" onclick="thinkOn=!thinkOn;this.textContent=thinkOn?'💡 Thinking ВКЛ':'💡 Thinking ВЫКЛ';this.style.color=thinkOn?'#76b900':'#8888a0'">💡 Thinking ВЫКЛ</span><span>Enter=отправить</span></div>
+</div>
+</div>
+</div>
+
+<script>
+// Catch ALL errors
+window.onerror=function(m,s,l,c,e){
+  console.error("JS ERROR:",m,s,l,c,e);
+  showErr("JS: "+m);
+  return false;
+};
+window.addEventListener("unhandledrejection",function(e){
+  console.error("PROMISE:",e.reason);
+  showErr("Promise: "+(e.reason&&e.reason.message||e.reason));
+});
+
+var API="/api/proxy",MDL="qwen/qwen2.5-coder-32b-instruct";
+var hist=[],loading=false,files=[],ragSrc=[],allOn=true,thinkOn=false;
+var PR={
+  coder:"Ты — программист. Пиши чистый код. Кратко.",
+  writer:"Ты — писатель. Улучшай стиль, исправляй ошибки.",
+  analyst:"Ты — аналитик. Структурируй, используй таблицы.",
+  lawyer:"Ты — юрист. Анализируй документы, ссылайся на закон."
+};
+
+function togInstr(){
+  var b=document.getElementById("instrBar");
+  b.classList.toggle("open");
+  document.getElementById("ibtn").classList.toggle("on",b.classList.contains("open"));
+  updDot();
+}
+function pre(k){document.getElementById("instrTxt").value=PR[k]||"";updDot()}
+function updDot(){document.getElementById("idot").classList.toggle("v",document.getElementById("instrTxt").value.trim().length>0)}
+function togFiles(){
+  var p=document.getElementById("fpanel");
+  p.classList.toggle("open");
+  document.getElementById("fbtn").classList.toggle("on",p.classList.contains("open"));
+}
+
+// File upload
+var dz=document.getElementById("dz"),fi=document.getElementById("fi");
+dz.addEventListener("dragover",function(e){e.preventDefault();dz.classList.add("drag")});
+dz.addEventListener("dragleave",function(){dz.classList.remove("drag")});
+dz.addEventListener("drop",function(e){e.preventDefault();dz.classList.remove("drag");if(e.dataTransfer.files.length)upload(e.dataTransfer.files)});
+fi.addEventListener("change",function(){if(fi.files.length)upload(fi.files);fi.value=""});
+
+function upload(fl){
+  document.getElementById("uprog").classList.add("on");
+  var fd=new FormData();for(var i=0;i<fl.length;i++)fd.append("file",fl[i]);
+  fetch("/api/upload",{method:"POST",body:fd}).then(function(r){return r.json()}).then(function(d){
+    if(d.error){alert(d.error)}
+    else if(d.uploaded){for(var j=0;j<d.uploaded.length;j++)files.push(d.uploaded[j]);render();stats()}
+  }).catch(function(e){alert("Upload:"+e.message)}).finally(function(){
+    document.getElementById("uprog").classList.remove("on");
+  });
+}
+
+function togFile(id){
+  fetch("/api/files/toggle?id="+id,{method:"POST"}).then(function(r){return r.json()}).then(function(d){
+    for(var i=0;i<files.length;i++){if(files[i].id===id){files[i].enabled=d.enabled;break}}
+    render();stats();
+  });
+}
+
+function togAll(){
+  allOn=!allOn;
+  fetch("/api/files/toggle-all",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled:allOn})}).then(function(r){return r.json()}).then(function(){
+    for(var i=0;i<files.length;i++)files[i].enabled=allOn;
+    render();stats();
+  });
+}
+
+function remFile(id){
+  fetch("/api/files/delete?id="+id,{method:"POST"}).then(function(){
+    files=files.filter(function(f){return f.id!==id});render();stats();
+  });
+}
+
+function stats(){
+  fetch("/api/stats").then(function(r){return r.json()}).then(function(d){
+    document.getElementById("sf").textContent=d.enabled_files;
+    document.getElementById("sc").textContent=d.total_chunks;
+    document.getElementById("sk").textContent=(d.total_chars/1000).toFixed(0)+"K";
+  });
+}
+
+function render(){
+  var list=document.getElementById("flist"),empty=document.getElementById("fempty"),badge=document.getElementById("fbadge");
+  var ec=files.filter(function(f){return f.enabled!==false}).length;
+  badge.textContent=files.length;badge.classList.toggle("v",files.length>0);
+  allOn=ec===files.length&&files.length>0;
+  var sack=document.getElementById("sack"),sal=document.getElementById("sal");
+  sack.classList.toggle("on",allOn);
+  sal.textContent=allOn?"Все вкл.":ec===0?"Все выкл.":"Частично";
+
+  var old=list.querySelectorAll(".fitem");for(var i=0;i<old.length;i++)old[i].remove();
+  if(!files.length){empty.style.display="";return}
+  empty.style.display="none";
+  var im={pdf:"📕",docx:"📘",doc:"📘",jpg:"🖼️",jpeg:"🖼️",png:"🖼️",py:"🐍",js:"📜",json:"📋",md:"📝",csv:"📊",txt:"📄"};
+  for(var j=0;j<files.length;j++){
+    var f=files[j],ext=f.name.split(".").pop().toLowerCase();
+    var ic=ext==="pdf"?"pdf":(ext==="docx"||ext==="doc")?"doc":"";
+    var en=f.enabled!==false;
+    var el=document.createElement("div");el.className="fitem"+(en?"":" off");
+    el.innerHTML='<button class="ftog '+(en?"on":"")+'" onclick="togFile(\''+f.id+'\')">✓</button>'+
+      '<div class="ficon '+ic+'">'+(im[ext]||"📄")+'</div>'+
+      '<div class="finf"><div class="fname" title="'+f.name+'">'+f.name+'</div>'+
+      '<div class="fsize">'+fmtSz(f.size)+(f.chunks?" · "+f.chunks+"фр":"")+'</div></div>'+
+      '<button class="frem" onclick="event.stopPropagation();remFile(\''+f.id+'\')">✕</button>';
+    list.appendChild(el);
+  }
+}
+
+function fmtSz(b){return b<1024?b+"B":b<1048576?(b/1024).toFixed(1)+"KB":(b/1048576).toFixed(1)+"MB"}
+
+function showStatus(t){var s=document.getElementById("sbar"),st=document.getElementById("stxt");if(t){s.classList.add("v");st.textContent=t}else{s.classList.remove("v")}}
+function showErr(t){
+  var msgs=document.getElementById("msgs");
+  var d=document.createElement("div");d.className="err";d.textContent="⚠ "+t;
+  msgs.appendChild(d);msgs.scrollTop=msgs.scrollHeight;
+}
+
+function addMsg(role,text,think,src){
+  var w=document.getElementById("welcome");if(w)w.remove();
+  var msgs=document.getElementById("msgs"),d=document.createElement("div");
+  d.className="m "+(role==="user"?"u":"a");
+  var l=document.createElement("div");l.className="ml";l.textContent=role==="user"?"ВЫ":"QWEN";
+  d.appendChild(l);
+  if(think){var tb=document.createElement("div");tb.className="thblk";var tl=document.createElement("div");tl.className="thl";tl.textContent="🧠 Мышление";tb.appendChild(tl);tb.appendChild(document.createTextNode(think));d.appendChild(tb)}
+  var b=document.createElement("div");b.className="mb";b.textContent=text;d.appendChild(b);
+  if(src&&src.length){var sd=document.createElement("div");sd.className="rsrcs";var seen={};
+    for(var i=0;i<src.length;i++){if(seen[src[i]])continue;seen[src[i]]=true;
+      var tg=document.createElement("span");tg.className="rsrc";tg.textContent="📎 "+src[i];sd.appendChild(tg)}
+    d.appendChild(sd)}
+  msgs.appendChild(d);msgs.scrollTop=msgs.scrollHeight;
+}
+
+function addTyping(){
+  var w=document.getElementById("welcome");if(w)w.remove();
+  var msgs=document.getElementById("msgs"),d=document.createElement("div");d.className="m a";d.id="typ";
+  var l=document.createElement("div");l.className="ml";l.textContent="QWEN";
+  var dots=document.createElement("div");dots.className="tdots";dots.innerHTML="<span></span><span></span><span></span>";
+  d.appendChild(l);d.appendChild(dots);msgs.appendChild(d);msgs.scrollTop=msgs.scrollHeight;
+}
+function remTyping(){var t=document.getElementById("typ");if(t)t.remove()}
+
+function send(){
+  if(loading)return;
+  var key=document.getElementById("apiKey").value.trim();
+  if(!key){alert("Введите API ключ!");return}
+  var inp=document.getElementById("inp"),text=inp.value.trim();
+  if(!text)return;
+  inp.value="";inp.style.height="auto";
+  addMsg("user",text);
+  hist.push({role:"user",content:text});
+  loading=true;document.getElementById("sbtn").disabled=true;
+  document.getElementById("sdot").style.background="#ff9500";
+  addTyping();ragSrc=[];
+
+  console.log("send() started, text:",text.substring(0,50));
+
+  var doSend=function(systemParts){
+    var messages=[];
+    if(systemParts.length)messages.push({role:"system",content:systemParts.join("\n\n---\n\n")});
+    messages=messages.concat(hist);
+
+    showStatus("⏳ Отправка в NVIDIA API...");
+    console.log("Sending to API (stream), msgs:",messages.length,"thinking:",thinkOn);
+
+    var bodyObj={__api_key__:key,model:MDL,messages:messages,max_tokens:4096,temperature:0.6,top_p:0.95,stream:true};
+    if(thinkOn)bodyObj.chat_template_kwargs={enable_thinking:true};
+
+    function doFetch(bodyObj,isRetry){
+    var ctrl=new AbortController();
+    var tout=setTimeout(function(){ctrl.abort()},90000);
+    fetch(API,{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify(bodyObj),signal:ctrl.signal
+    }).then(function(r){
+      clearTimeout(tout);
+      if(!r.ok){
+        return r.text().then(function(t){
+          // Retry once without thinking on 504
+          if(!isRetry && r.status>=500){
+            console.log("Got "+r.status+", retrying without thinking...");
+            showStatus("⚠ Повтор без Thinking...");
+            delete bodyObj.chat_template_kwargs;
+            return doFetch(bodyObj,true);
+          }
+          var e; try{e=JSON.parse(t)}catch(x){e={error:t}}
+          throw new Error(e.error||e.detail||e.message||"HTTP "+r.status);
+        });
+      }
+      showStatus("🧠 Получение ответа...");
+      remTyping();
+
+      var w=document.getElementById("welcome");if(w)w.remove();
+      var msgs2=document.getElementById("msgs"),md=document.createElement("div");
+      md.className="m a";
+      var lb=document.createElement("div");lb.className="ml";lb.textContent="QWEN";
+      md.appendChild(lb);
+      var thblk=document.createElement("div");thblk.className="thblk";thblk.style.display="none";
+      var thl2=document.createElement("div");thl2.className="thl";thl2.textContent="🧠 Мышление";
+      thblk.appendChild(thl2);
+      var thTxt=document.createTextNode("");thblk.appendChild(thTxt);
+      md.appendChild(thblk);
+      var mbody=document.createElement("div");mbody.className="mb";
+      md.appendChild(mbody);
+      msgs2.appendChild(md);
+
+      var content="",think="",buf="";
+      var reader=r.body.getReader();
+      var decoder=new TextDecoder();
+
+      function pump(){
+        return reader.read().then(function(res){
+          if(res.done){
+            if(ragSrc&&ragSrc.length){
+              var sd2=document.createElement("div");sd2.className="rsrcs";var seen2={};
+              for(var i=0;i<ragSrc.length;i++){if(seen2[ragSrc[i]])continue;seen2[ragSrc[i]]=true;
+                var tg=document.createElement("span");tg.className="rsrc";tg.textContent="📎 "+ragSrc[i];sd2.appendChild(tg)}
+              md.appendChild(sd2);
+            }
+            if(!content)content="[пустой ответ]";
+            mbody.textContent=content;
+            hist.push({role:"assistant",content:content});
+            showStatus("");
+            loading=false;document.getElementById("sbtn").disabled=false;
+            document.getElementById("sdot").style.background="#76b900";
+            console.log("Stream done, content len:",content.length,"think len:",think.length);
+            return;
+          }
+          buf+=decoder.decode(res.value,{stream:true});
+          var lines=buf.split("\n");
+          buf=lines.pop();
+          for(var i=0;i<lines.length;i++){
+            var ln=lines[i].trim();
+            if(!ln.startsWith("data:"))continue;
+            var dd=ln.substring(5).trim();
+            if(dd==="[DONE]")continue;
+            try{
+              var j=JSON.parse(dd);
+              var delta=j.choices&&j.choices[0]&&j.choices[0].delta;
+              if(delta){
+                if(delta.reasoning_content){think+=delta.reasoning_content;thblk.style.display="";thTxt.textContent=think}
+                if(delta.content!=null&&delta.content!==""){content+=delta.content;mbody.textContent=content;showStatus("✍️ Генерация...")}
+              }
+            }catch(e){}
+          }
+          msgs2.scrollTop=msgs2.scrollHeight;
+          return pump();
+        });
+      }
+      return pump();
+    }).catch(function(e){
+      console.error("API error:",e);
+      remTyping();showStatus("");showErr(e.message);
+      loading=false;document.getElementById("sbtn").disabled=false;
+      document.getElementById("sdot").style.background="#76b900";
+    });
+    } // end doFetch
+    doFetch(bodyObj,false);
+  };
+
+  // Build system parts
+  var sysParts=[];
+  var instr=document.getElementById("instrTxt").value.trim();
+  if(instr)sysParts.push(instr);
+
+  var enCount=files.filter(function(f){return f.enabled!==false}).length;
+  console.log("Enabled files:",enCount);
+
+  if(enCount>0){
+    showStatus("🔍 RAG поиск по "+enCount+" файлам...");
+    fetch("/api/search",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({query:text})
+    }).then(function(r){return r.json()}).then(function(sd){
+      console.log("RAG result: chunks=",sd.chunks_found,"files=",sd.files_used&&sd.files_used.length);
+      if(sd.context&&sd.chunks_found>0){
+        sysParts.push("У тебя есть доступ к базе знаний пользователя. Ниже приведены релевантные фрагменты из загруженных документов. Используй эту информацию для ответа. Если пользователь спрашивает про файл или документ — отвечай на основе этих данных.\n\n"+sd.context);
+        ragSrc=sd.files_used||[];
+      } else {
+        var fnames=files.filter(function(f){return f.enabled!==false}).map(function(f){return f.name});
+        if(fnames.length>0){
+          sysParts.push("У тебя есть доступ к базе знаний пользователя. Загруженные файлы: "+fnames.join(", ")+". Поиск не нашёл релевантных фрагментов по запросу. Если пользователь спрашивает про содержимое файла — сообщи что файл загружен и предложи задать более конкретный вопрос по содержимому документа.");
+        }
+      }
+      doSend(sysParts);
+    }).catch(function(e){
+      console.error("RAG error:",e);
+      doSend(sysParts); // still send without RAG
+    });
+  } else {
+    doSend(sysParts);
+  }
+}
+
+// Init
+fetch("/api/files").then(function(r){return r.json()}).then(function(d){files=d;render();stats()}).catch(function(){});
+document.getElementById("instrTxt").addEventListener("input",updDot);
+</script>
+</body>
+</html>
