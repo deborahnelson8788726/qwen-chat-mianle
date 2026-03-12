@@ -178,6 +178,9 @@ select.hbtn option{background:var(--s);color:var(--t)}
 <button class="close-side" onclick="toggleSidebar()">✕</button>
 </div>
 <div class="side-nav">
+<button class="hbtn on" style="width:100%" id="ibtn" onclick="togInstr()">⚖️ MILEAN Инструкция <span class="dot v" id="idot"></span></button>
+<button class="hbtn" style="width:100%" id="pjbtn" onclick="togProj()">📂 Проекты</button>
+<button class="hbtn" style="width:100%" id="fbtn" onclick="togFiles()">📁 Файлы <span class="badge" id="fbadge">0</span></button>
 <select id="mdlSel" class="hbtn" style="width:100%" onchange="MDL=this.value;document.getElementById('mdlLabel').textContent=this.value.split('/')[1]">
 <option value="qwen/qwen3.5-397b-a17b" selected>Qwen 3.5 397B</option>
 <option value="qwen/qwen2.5-coder-32b-instruct">Qwen 2.5 Coder 32B</option>
@@ -185,13 +188,7 @@ select.hbtn option{background:var(--s);color:var(--t)}
 <option value="qwen/qwen3.5-122b-a10b">Qwen 3.5 122B</option>
 <option value="qwen/qwq-32b">QwQ 32B</option>
 </select>
-<button class="hbtn" style="width:100%" id="pjbtn" onclick="togProj()">📂 Проекты</button>
-<button class="hbtn on" style="width:100%" id="ibtn" onclick="togInstr()">⚖️ MILEAN Инструкция <span class="dot v" id="idot"></span></button>
-<button class="hbtn" style="width:100%" id="fbtn" onclick="togFiles()">📁 Файлы <span class="badge" id="fbadge">0</span></button>
-<div style="display:flex;align-items:center;gap:10px;padding:6px 0">
-<label onclick="txtMode=!txtMode;this.querySelector('.ftog').classList.toggle('on',txtMode)" style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:10px;font-family:'Space Mono',monospace;color:var(--t2)"><span class="ftog" id="txtTog">✓</span> TXT</label>
-<div style="display:flex;align-items:center;gap:6px"><div class="sdot" id="sdot"></div><span style="font-size:9px;font-family:'Space Mono',monospace;color:var(--t2)">Статус</span></div>
-</div>
+<label onclick="txtMode=!txtMode;this.querySelector('.ftog').classList.toggle('on',txtMode)" style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:10px;font-family:'Space Mono',monospace;color:var(--t2);padding:4px 0"><span class="ftog" id="txtTog">✓</span> TXT</label>
 </div>
 <div id="instrBar">
 <div class="ihead"><label>⚖️ MILEAN — Инструкция</label><div style="display:flex;gap:6px"><button id="instrEditBtn" onclick="toggleInstrEdit()" style="background:var(--s2);border:1px solid var(--bd);border-radius:5px;padding:2px 10px;font-size:10px;font-family:'Space Mono',monospace;color:var(--t2);cursor:pointer">✏️ Edit</button><button id="instrResetBtn" onclick="resetInstr()" style="background:var(--s2);border:1px solid var(--bd);border-radius:5px;padding:2px 10px;font-size:10px;font-family:'Space Mono',monospace;color:var(--t2);cursor:pointer;display:none">↩ Reset</button><button onclick="togInstr()" style="background:none;border:none;color:var(--t2);cursor:pointer;font-size:16px">✕</button></div></div>
@@ -220,6 +217,7 @@ select.hbtn option{background:var(--s);color:var(--t)}
 </div>
 <div class="flist" id="flist"><div class="fempty" id="fempty">🔍 Загрузите файлы для RAG</div></div>
 </div>
+<div style="margin-top:auto;padding:10px 16px;border-top:1px solid var(--bd);display:flex;align-items:center;gap:6px"><div class="sdot" id="sdot"></div><span style="font-size:9px;font-family:'Space Mono',monospace;color:var(--t2)">Статус</span></div>
 </div>
 <div class="chat">
 <div id="msgs">
