@@ -1,18 +1,27 @@
 """GET /api/stats"""
 from http.server import BaseHTTPRequestHandler
-import json, sys, os
+import json, sys, os, traceback
+sys.path.insert(0, os.path.dirname(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from _storage import get_stats
 
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
-        data = get_stats()
-        b = json.dumps(data, ensure_ascii=False).encode()
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.end_headers()
-        self.wfile.write(b)
+        try:
+            data = get_stats()
+            b = json.dumps(data, ensure_ascii=False).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(b)
+        except Exception as e:
+            b = json.dumps({"error": str(e), "trace": traceback.format_exc()}).encode()
+            self.send_response(500)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(b)
 
     def do_OPTIONS(self):
         self.send_response(200)
