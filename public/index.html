@@ -220,6 +220,7 @@ select.hbtn option{background:var(--s);color:var(--t)}
 </div>
 <div id="fpanel" style="border-right:none">
 <div class="phead"><h3>📁 База знаний</h3><button class="pclose" onclick="togFiles()">✕</button></div>
+<div style="padding:4px 16px 6px;font-size:10px;font-family:'Space Mono',monospace;color:var(--ac);border-bottom:1px solid var(--bd);display:flex;align-items:center;gap:5px">📂 <span id="fprojName">Проект</span></div>
 <div class="rstats"><div class="rstat"><div class="rsv" id="sf">0</div><div class="rsl">Файлов</div></div>
 <div class="rstat"><div class="rsv" id="sc">0</div><div class="rsl">Фрагм.</div></div>
 <div class="rstat"><div class="rsv" id="sk">0K</div><div class="rsl">Симв.</div></div>
@@ -492,13 +493,15 @@ function createProject(name,silent){
   if(!name&&!silent){name=prompt("Название проекта:","Проект "+(projects.length+1));if(!name)return}
   if(!name)name="Новый проект";
   saveCurrentState();
-  var p={id:genId(),name:name,hist:[],files:[],instr:"",chatHTML:"",created:Date.now()};
+  var p={id:genId(),name:name,hist:[],files:[],instr:MILEAN_INSTR,chatHTML:"",created:Date.now()};
   projects.push(p);
   activeProjectId=p.id;
   hist=[];files=[];
-  document.getElementById("instrTxt").value="";
+  document.getElementById("instrTxt").value=MILEAN_INSTR;
+  document.getElementById("instrPreview").textContent=MILEAN_INSTR;
   document.getElementById("msgs").innerHTML='<div id="welcome"><h2>Привет, я <span>MILEAN</span> твой агент</h2><p>Загрузите файлы — я проанализирую и помогу</p></div>';
-  saveProjects();renderProjects();render();stats();updDot();
+  saveProjects();renderProjects();render();localStats();updDot();
+  updateProjectLabel();
 }
 function switchProject(id){
   if(id===activeProjectId)return;
@@ -507,12 +510,15 @@ function switchProject(id){
   var p=getActiveProject();
   hist=p.hist||[];
   files=p.files||[];
-  document.getElementById("instrTxt").value=p.instr||"";
+  var instr=p.instr||MILEAN_INSTR;
+  document.getElementById("instrTxt").value=instr;
+  document.getElementById("instrPreview").textContent=instr;
   // Restore chat
   var msgs=document.getElementById("msgs");
   if(p.chatHTML){msgs.innerHTML=p.chatHTML}
   else{msgs.innerHTML='<div id="welcome"><h2>Привет, я <span>MILEAN</span> твой агент</h2><p>Загрузите файлы — я проанализирую и помогу</p></div>'}
-  saveProjects();renderProjects();render();stats();updDot();
+  saveProjects();renderProjects();render();localStats();updDot();
+  updateProjectLabel();
 }
 function deleteProject(id){
   if(projects.length<=1){alert("Нельзя удалить единственный проект");return}
@@ -525,7 +531,7 @@ function deleteProject(id){
 function renameProject(id){
   var p=projects.find(function(x){return x.id===id});if(!p)return;
   var n=prompt("Новое название:",p.name);if(!n)return;
-  p.name=n;saveProjects();renderProjects();
+  p.name=n;saveProjects();renderProjects();updateProjectLabel();
 }
 function togProj(){
   var panel=document.getElementById("projPanel");
@@ -552,10 +558,11 @@ function renderProjects(){
     el.className="pj-item"+(isActive?" active":"");
     el.onclick=(function(pid){return function(e){if(e.target.closest(".pj-del"))return;switchProject(pid)}})(p.id);
     var fc=p.files?p.files.length:0;
+    var ec=p.files?p.files.filter(function(f){return f.enabled!==false}).length:0;
     var mc=p.hist?Math.floor(p.hist.length/2):0;
     el.innerHTML='<span class="pj-icon">📁</span>'+
       '<div class="pj-info"><div class="pj-name" ondblclick="event.stopPropagation();renameProject(\''+p.id+'\')">'+p.name+'</div>'+
-      '<div class="pj-meta">'+fc+' файл. · '+mc+' сообщ.</div></div>'+
+      '<div class="pj-meta">📎 '+ec+'/'+fc+' файл. · 💬 '+mc+' сообщ.</div></div>'+
       '<button class="pj-del" onclick="event.stopPropagation();deleteProject(\''+p.id+'\')" title="Удалить">✕</button>';
     list.appendChild(el);
   }
@@ -612,6 +619,11 @@ function resetInstr(){
   saveInstrEdit();
 }
 function updDot(){document.getElementById("idot").classList.add("v")}
+function updateProjectLabel(){
+  var p=getActiveProject();
+  var label=document.getElementById("fprojName");
+  if(label&&p) label.textContent=p.name;
+}
 function togFiles(){
   var fp=document.getElementById("fpanel");
   var pp=document.getElementById("projPanel");
@@ -1009,7 +1021,7 @@ if(ap){
   document.getElementById("instrTxt").value=ap.instr||"";
   if(ap.chatHTML) document.getElementById("msgs").innerHTML=ap.chatHTML;
 }
-renderProjects();render();localStats();
+renderProjects();render();localStats();updateProjectLabel();
 document.getElementById("instrTxt").addEventListener("input",updDot);
 // Auto-save state periodically and on close
 setInterval(saveCurrentState,10000);
