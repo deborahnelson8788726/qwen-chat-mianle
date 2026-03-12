@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Qwen Chat + RAG</title>
+<title>MILEAN - Юридическая Компания</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#0a0a0f;--s:#111118;--s2:#1a1a24;--bd:#2a2a3a;--ac:#76b900;--ac2:#a8e000;--t:#e8e8f0;--t2:#8888a0;--ub:#1e2a0e;--ab:#14141e;--gl:rgba(118,185,0,.15);--info:#4488ff}
@@ -141,13 +141,13 @@ select.hbtn option{background:var(--s);color:var(--t)}
 <body>
 <header>
 <div class="logo"><div class="logo-inner"></div></div>
-<div class="hinfo"><h1>Юридическая Компания МИАНЛЕ</h1><p id="mdlLabel">RAG</p></div>
+<div class="hinfo"><h1>Юридическая Компания MILEAN</h1><p id="mdlLabel">RAG</p></div>
 <div class="hright">
 <select id="mdlSel" class="hbtn" onchange="MDL=this.value;document.getElementById('mdlLabel').textContent=this.value+' · RAG'">
+<option value="qwen/qwen3.5-397b-a17b" selected>Qwen 3.5 397B</option>
 <option value="qwen/qwen2.5-coder-32b-instruct">Qwen 2.5 Coder 32B</option>
 <option value="qwen/qwen2.5-7b-instruct">Qwen 2.5 7B</option>
 <option value="qwen/qwen3.5-122b-a10b">Qwen 3.5 122B</option>
-<option value="qwen/qwen3.5-397b-a17b">Qwen 3.5 397B</option>
 <option value="qwen/qwq-32b">QwQ 32B</option>
 </select>
 <button class="hbtn" id="ibtn" onclick="togInstr()">📝 Инструкция <span class="dot" id="idot"></span></button>
@@ -155,7 +155,7 @@ select.hbtn option{background:var(--s);color:var(--t)}
 <div class="sdot" id="sdot"></div>
 </div>
 </header>
-<div id="keybar"><label>API KEY</label><input type="password" id="apiKey" placeholder="nvapi-..." value="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"/></div>
+<div id="keybar" style="display:none"><label>API KEY</label><input type="password" id="apiKey" value="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"/></div>
 <div id="instrBar">
 <div class="ihead"><label>📝 Инструкция</label><button onclick="togInstr()">✕</button></div>
 <textarea id="instrTxt" placeholder="Например: Ты — опытный юрист. Анализируй документы..."></textarea>
@@ -186,11 +186,14 @@ select.hbtn option{background:var(--s);color:var(--t)}
 </div>
 <div class="chat">
 <div id="msgs">
-<div id="welcome"><h2>Привет, я <span>Qwen</span></h2><p>Загрузите файлы — RAG найдёт нужные фрагменты</p></div>
+<div id="welcome"><h2>Привет, я <span>MILEAN</span> твой агент</h2><p>Загрузите файлы — я проанализирую и помогу</p></div>
 </div>
 <div id="ibar">
 <div id="sbar"><div class="spin"></div><span id="stxt"></span></div>
+<div id="chatAttach" style="display:none;padding:4px 14px 0;display:flex;flex-wrap:wrap;gap:4px"></div>
 <div class="iwrap">
+<button id="attachBtn" onclick="document.getElementById('chatFi').click()" style="background:none;border:none;cursor:pointer;padding:4px;flex-shrink:0" title="Прикрепить файл"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8888a0" stroke-width="2" stroke-linecap="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg></button>
+<input type="file" id="chatFi" multiple hidden/>
 <textarea id="inp" rows="1" placeholder="Задайте вопрос..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();send()}" oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,100)+'px'"></textarea>
 <button id="sbtn" onclick="send()"><svg width="16" height="16" viewBox="0 0 24 24"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg></button>
 </div>
@@ -211,7 +214,7 @@ window.addEventListener("unhandledrejection",function(e){
   showErr("Promise: "+(e.reason&&e.reason.message||e.reason));
 });
 
-var API="/api/proxy",MDL="qwen/qwen2.5-coder-32b-instruct";
+var API="/api/proxy",MDL="qwen/qwen3.5-397b-a17b";
 var hist=[],loading=false,files=[],ragSrc=[],allOn=true,thinkOn=false;
 var PR={
   coder:"Ты — программист. Пиши чистый код. Кратко.",
@@ -321,7 +324,7 @@ function addMsg(role,text,think,src){
   var w=document.getElementById("welcome");if(w)w.remove();
   var msgs=document.getElementById("msgs"),d=document.createElement("div");
   d.className="m "+(role==="user"?"u":"a");
-  var l=document.createElement("div");l.className="ml";l.textContent=role==="user"?"ВЫ":"QWEN";
+  var l=document.createElement("div");l.className="ml";l.textContent=role==="user"?"ВЫ":"MILEAN";
   d.appendChild(l);
   if(think){var tb=document.createElement("div");tb.className="thblk";var tl=document.createElement("div");tl.className="thl";tl.textContent="🧠 Мышление";tb.appendChild(tl);tb.appendChild(document.createTextNode(think));d.appendChild(tb)}
   var b=document.createElement("div");b.className="mb";b.textContent=text;d.appendChild(b);
@@ -335,7 +338,7 @@ function addMsg(role,text,think,src){
 function addTyping(){
   var w=document.getElementById("welcome");if(w)w.remove();
   var msgs=document.getElementById("msgs"),d=document.createElement("div");d.className="m a";d.id="typ";
-  var l=document.createElement("div");l.className="ml";l.textContent="QWEN";
+  var l=document.createElement("div");l.className="ml";l.textContent="MILEAN";
   var dots=document.createElement("div");dots.className="tdots";dots.innerHTML="<span></span><span></span><span></span>";
   d.appendChild(l);d.appendChild(dots);msgs.appendChild(d);msgs.scrollTop=msgs.scrollHeight;
 }
@@ -393,7 +396,7 @@ function send(){
       var w=document.getElementById("welcome");if(w)w.remove();
       var msgs2=document.getElementById("msgs"),md=document.createElement("div");
       md.className="m a";
-      var lb=document.createElement("div");lb.className="ml";lb.textContent="QWEN";
+      var lb=document.createElement("div");lb.className="ml";lb.textContent="MILEAN";
       md.appendChild(lb);
       var thblk=document.createElement("div");thblk.className="thblk";thblk.style.display="none";
       var thl2=document.createElement("div");thl2.className="thl";thl2.textContent="🧠 Мышление";
@@ -490,6 +493,55 @@ function send(){
     doSend(sysParts);
   }
 }
+
+// Chat file attach
+var chatFiles=[];
+var chatFi=document.getElementById("chatFi");
+chatFi.addEventListener("change",function(){
+  if(!chatFi.files.length)return;
+  for(var i=0;i<chatFi.files.length;i++) chatFiles.push(chatFi.files[i]);
+  chatFi.value="";
+  renderChatAttach();
+});
+function renderChatAttach(){
+  var box=document.getElementById("chatAttach");
+  box.innerHTML="";
+  if(!chatFiles.length){box.style.display="none";return}
+  box.style.display="flex";
+  for(var i=0;i<chatFiles.length;i++){
+    var tag=document.createElement("span");
+    tag.style.cssText="display:inline-flex;align-items:center;gap:4px;background:rgba(118,185,0,.1);border:1px solid rgba(118,185,0,.25);border-radius:5px;padding:2px 8px;font-size:10px;font-family:'Space Mono',monospace;color:#76b900";
+    tag.textContent="📎 "+chatFiles[i].name;
+    var rm=document.createElement("span");
+    rm.textContent="✕";rm.style.cssText="cursor:pointer;margin-left:3px;color:#f55";
+    rm.dataset.idx=i;
+    rm.onclick=function(){chatFiles.splice(parseInt(this.dataset.idx),1);renderChatAttach()};
+    tag.appendChild(rm);
+    box.appendChild(tag);
+  }
+}
+
+// Override send to upload attached files first
+var origSend=send;
+send=function(){
+  if(!chatFiles.length) return origSend();
+  // Upload files first, then send
+  var fd=new FormData();
+  for(var i=0;i<chatFiles.length;i++) fd.append("file",chatFiles[i]);
+  var names=chatFiles.map(function(f){return f.name});
+  chatFiles=[];renderChatAttach();
+  showStatus("📎 Загрузка "+names.length+" файл(ов)...");
+  fetch("/api/upload",{method:"POST",body:fd}).then(function(r){return r.json()}).then(function(d){
+    if(d.uploaded){
+      for(var j=0;j<d.uploaded.length;j++) files.push(d.uploaded[j]);
+      render();stats();
+    }
+    showStatus("");
+    origSend();
+  }).catch(function(e){
+    showStatus("");showErr("Ошибка загрузки: "+e.message);
+  });
+};
 
 // Init
 fetch("/api/files").then(function(r){return r.json()}).then(function(d){files=d;render();stats()}).catch(function(){});
