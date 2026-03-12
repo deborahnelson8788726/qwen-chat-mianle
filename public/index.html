@@ -957,7 +957,7 @@ function send(){
 
     function doFetch(bodyObj,isRetry){
     var ctrl=new AbortController();
-    var tout=setTimeout(function(){ctrl.abort()},90000);
+    var tout=setTimeout(function(){ctrl.abort("Таймаут: сервер не ответил за 3 минуты")},180000);
     fetch(API,{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify(bodyObj),signal:ctrl.signal
     }).then(function(r){
@@ -1040,8 +1040,13 @@ function send(){
       }
       return pump();
     }).catch(function(e){
+      clearTimeout(tout);
       console.error("API error:",e);
-      remTyping();showStatus("");showErr(e.message);
+      var msg=e.message||"";
+      if(e.name==="AbortError"||msg.indexOf("abort")!==-1){
+        msg="⏱ Таймаут: сервер не ответил. Попробуйте ещё раз или отключите Think.";
+      }
+      remTyping();showStatus("");showErr(msg);
       loading=false;document.getElementById("sbtn").disabled=false;
       document.getElementById("sdot").style.background="#76b900";
     });
