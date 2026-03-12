@@ -193,6 +193,16 @@ select.hbtn option{background:var(--s);color:var(--t)}
 .tswitch-track.on .tswitch-thumb{left:18px;background:#fff}
 .tswitch-label{font-size:10px;font-family:'Space Mono',monospace;color:var(--t2);transition:color .2s}
 .tswitch-track.on+.tswitch-label{color:var(--ac)}
+.file-card{display:flex;align-items:center;gap:10px;background:rgba(118,185,0,.06);border:1px solid rgba(118,185,0,.2);border-radius:8px;padding:10px 14px;margin-top:8px;cursor:default}
+.file-card-icon{width:36px;height:36px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.file-card-icon.txt{background:rgba(118,185,0,.12);border:1px solid rgba(118,185,0,.25)}
+.file-card-icon.doc{background:rgba(50,100,220,.12);border:1px solid rgba(50,100,220,.25)}
+.file-card-icon.pdf{background:rgba(220,50,50,.12);border:1px solid rgba(220,50,50,.25)}
+.file-card-info{flex:1;min-width:0}
+.file-card-name{font-size:12px;font-weight:600;color:var(--t);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.file-card-size{font-size:9px;font-family:'Space Mono',monospace;color:var(--t2);margin-top:2px}
+.file-card-dl{background:var(--ac);border:none;color:var(--bg);border-radius:6px;padding:6px 14px;font-size:11px;font-family:'Space Mono',monospace;font-weight:700;cursor:pointer;white-space:nowrap;transition:background .15s}
+.file-card-dl:hover{background:var(--ac2)}
 .theme-toggle{position:fixed;top:10px;right:10px;z-index:20;background:var(--s);border:1px solid var(--bd);border-radius:7px;padding:5px 10px;cursor:pointer;color:var(--t2);font-size:14px;display:flex;align-items:center;gap:5px;transition:all .2s}
 .theme-toggle:hover{border-color:var(--ac);color:var(--ac)}
 .theme-toggle span{font-size:10px;font-family:'Space Mono',monospace}
@@ -845,6 +855,49 @@ function downloadDocs(text){
   setTimeout(function(){downloadPdf(text)},500);
 }
 
+function showFileCard(text,type,parentEl){
+  var ts=getTimestamp();
+  var wrap=document.createElement("div");
+  wrap.style.cssText="display:flex;flex-direction:column;gap:6px;margin-top:8px";
+
+  if(type==="txt"||type==="docs"){
+    // TXT card
+    var fn="milean_"+ts+".txt";
+    var blob=new Blob([text],{type:"text/plain;charset=utf-8"});
+    var url=URL.createObjectURL(blob);
+    var sz=fmtSz(blob.size);
+    var card=document.createElement("div");card.className="file-card";
+    card.innerHTML='<div class="file-card-icon txt">📄</div><div class="file-card-info"><div class="file-card-name">'+fn+'</div><div class="file-card-size">'+sz+' · TXT</div></div>';
+    var btn=document.createElement("button");btn.className="file-card-dl";btn.textContent="⬇ Скачать";
+    btn.onclick=function(){var a=document.createElement("a");a.href=url;a.download=fn;document.body.appendChild(a);a.click();document.body.removeChild(a)};
+    card.appendChild(btn);wrap.appendChild(card);
+  }
+  if(type==="docs"){
+    // DOCX card
+    var fnDoc="milean_"+ts+".doc";
+    var htmlContent=text.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\n/g,"<br>");
+    var docHtml='<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><style>body{font-family:"Arial",sans-serif;font-size:12pt;line-height:1.8;color:#1a1a1a;padding:40px;}h1{font-size:18pt;color:#222;margin-bottom:10pt;}.header{text-align:center;color:#76b900;font-size:14pt;font-weight:bold;margin-bottom:20pt;border-bottom:2pt solid #76b900;padding-bottom:8pt;}.footer{margin-top:30pt;padding-top:8pt;border-top:1pt solid #ccc;font-size:9pt;color:#888;text-align:center;}</style></head><body><div class="header">MILEAN</div><div>'+htmlContent+'</div><div class="footer">MILEAN AI · '+new Date().toLocaleString("ru-RU")+'</div></body></html>';
+    var blobDoc=new Blob(['\ufeff'+docHtml],{type:'application/msword;charset=utf-8'});
+    var urlDoc=URL.createObjectURL(blobDoc);
+    var szDoc=fmtSz(blobDoc.size);
+    var card2=document.createElement("div");card2.className="file-card";
+    card2.innerHTML='<div class="file-card-icon doc">📘</div><div class="file-card-info"><div class="file-card-name">'+fnDoc+'</div><div class="file-card-size">'+szDoc+' · DOCX</div></div>';
+    var btn2=document.createElement("button");btn2.className="file-card-dl";btn2.textContent="⬇ Скачать";
+    btn2.onclick=function(){var a=document.createElement("a");a.href=urlDoc;a.download=fnDoc;document.body.appendChild(a);a.click();document.body.removeChild(a)};
+    card2.appendChild(btn2);wrap.appendChild(card2);
+
+    // PDF card
+    var fnPdf="milean_"+ts+".pdf";
+    var card3=document.createElement("div");card3.className="file-card";
+    card3.innerHTML='<div class="file-card-icon pdf">📕</div><div class="file-card-info"><div class="file-card-name">'+fnPdf+'</div><div class="file-card-size">PDF</div></div>';
+    var btn3=document.createElement("button");btn3.className="file-card-dl";btn3.textContent="⬇ Скачать";
+    btn3.onclick=function(){downloadPdf(text)};
+    card3.appendChild(btn3);wrap.appendChild(card3);
+  }
+  parentEl.appendChild(wrap);
+  document.getElementById("msgs").scrollTop=document.getElementById("msgs").scrollHeight;
+}
+
 function showStatus(t){var s=document.getElementById("sbar"),st=document.getElementById("stxt");if(t){s.classList.add("v");st.textContent=t}else{s.classList.remove("v")}}
 function showErr(t){
   var msgs=document.getElementById("msgs");
@@ -959,8 +1012,8 @@ function send(){
             loading=false;document.getElementById("sbtn").disabled=false;
             document.getElementById("sdot").style.background="#76b900";
             console.log("Stream done, content len:",content.length,"think len:",think.length);
-            if(txtMode) downloadTxt(content);
-            if(docMode) downloadDocs(content);
+            if(txtMode) showFileCard(content,"txt",md);
+            if(docMode) showFileCard(content,"docs",md);
             saveCurrentState();renderProjects();
             return;
           }
