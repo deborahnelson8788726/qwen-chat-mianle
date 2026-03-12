@@ -215,7 +215,7 @@ body.light .sdot{background:var(--ac);box-shadow:0 0 6px var(--ac)}
 <body>
 <button class="side-toggle" id="sideToggle" onclick="toggleSidebar()">☰</button>
 <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()">🌙 <span>Тема</span></button>
-<div id="keybar" style="display:none"><input type="password" id="apiKey" value="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"/></div>
+<div id="keybar" style="display:none"><input type="password" id="apiKey" value="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"/><input type="password" id="pplxKey" value=""/></div>
 <div class="main">
 <div id="sidebar">
 <div class="side-brand">
@@ -236,6 +236,7 @@ body.light .sdot{background:var(--ac);box-shadow:0 0 6px var(--ac)}
 </select>
 <label onclick="txtMode=!txtMode;this.querySelector('.ftog').classList.toggle('on',txtMode)" style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:10px;font-family:'Space Mono',monospace;color:var(--t2);padding:4px 0"><span class="ftog" id="txtTog">✓</span> TXT</label>
 <label onclick="docMode=!docMode;this.querySelector('.ftog').classList.toggle('on',docMode)" style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:10px;font-family:'Space Mono',monospace;color:var(--t2);padding:4px 0"><span class="ftog" id="docTog">✓</span> 📄 DOCX + PDF</label>
+<label onclick="toggleWeb(this)" style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:10px;font-family:'Space Mono',monospace;color:var(--t2);padding:4px 0"><span class="ftog" id="webTog">✓</span> 🌐 Интернет (Perplexity)</label>
 </div>
 <div id="instrBar">
 <div class="ihead"><label>⚖️ MILEAN — Инструкция</label><div style="display:flex;gap:6px"><button id="instrEditBtn" onclick="toggleInstrEdit()" style="background:var(--s2);border:1px solid var(--bd);border-radius:5px;padding:2px 10px;font-size:10px;font-family:'Space Mono',monospace;color:var(--t2);cursor:pointer">✏️ Edit</button><button id="instrResetBtn" onclick="resetInstr()" style="background:var(--s2);border:1px solid var(--bd);border-radius:5px;padding:2px 10px;font-size:10px;font-family:'Space Mono',monospace;color:var(--t2);cursor:pointer;display:none">↩ Reset</button><button onclick="togInstr()" style="background:none;border:none;color:var(--t2);cursor:pointer;font-size:16px">✕</button></div></div>
@@ -311,7 +312,27 @@ window.addEventListener("unhandledrejection",function(e){
 });
 
 var API="/api/proxy",MDL="qwen/qwen3.5-397b-a17b";
-var hist=[],loading=false,files=[],ragSrc=[],allOn=true,thinkOn=true,txtMode=false,docMode=false;
+var hist=[],loading=false,files=[],ragSrc=[],allOn=true,thinkOn=true,txtMode=false,docMode=false,webMode=false;
+// Restore web mode + pplx key
+(function(){
+  if(localStorage.getItem("milean_web")==="1"){webMode=true;var wt=document.getElementById("webTog");if(wt)wt.classList.add("on")}
+  var sk=localStorage.getItem("milean_pplx");if(sk){var el=document.getElementById("pplxKey");if(el)el.value=sk}
+})();
+function toggleWeb(lbl){
+  if(!webMode){
+    var pk=document.getElementById("pplxKey").value.trim();
+    if(!pk){
+      pk=prompt("Введите Perplexity API ключ (pplx-...):");
+      if(!pk||!pk.trim()){return}
+      pk=pk.trim();
+      document.getElementById("pplxKey").value=pk;
+      localStorage.setItem("milean_pplx",pk);
+    }
+  }
+  webMode=!webMode;
+  lbl.querySelector(".ftog").classList.toggle("on",webMode);
+  localStorage.setItem("milean_web",webMode?"1":"0");
+}
 
 // Theme
 function toggleTheme(){
@@ -1082,14 +1103,37 @@ function send(){
         sysParts.push("У тебя есть доступ к базе знаний пользователя. Загруженные файлы: "+fnames.join(", ")+". Поиск не нашёл релевантных фрагментов по запросу. Если пользователь спрашивает про содержимое файла — сообщи что файл загружен и предложи задать более конкретный вопрос по содержимому документа.");
       }
       showAnalysis(false);
-      doSend(sysParts);
+      doWebThenSend(sysParts,text);
     }).catch(function(e){
       console.error("Local RAG error:",e);
       showAnalysis(false);
-      doSend(sysParts);
+      doWebThenSend(sysParts,text);
     });
   } else {
-    doSend(sysParts);
+    doWebThenSend(sysParts,text);
+  }
+
+  function doWebThenSend(parts,query){
+    if(!webMode) return doSend(parts);
+    var pplxKey=document.getElementById("pplxKey").value.trim();
+    if(!pplxKey) return doSend(parts);
+    showStatus("🌐 Поиск в интернете...");
+    fetch("/api/search",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({key:pplxKey,query:query})
+    }).then(function(r){return r.json()}).then(function(data){
+      if(data.content){
+        var webCtx="РЕЗУЛЬТАТЫ ВЕБ-ПОИСКА (Perplexity):\n"+data.content;
+        if(data.citations&&data.citations.length){
+          webCtx+="\n\nИсточники:\n"+data.citations.map(function(u,i){return "["+(i+1)+"] "+u}).join("\n");
+        }
+        parts.push(webCtx);
+        console.log("Web search added, citations:",data.citations?data.citations.length:0);
+      }
+      doSend(parts);
+    }).catch(function(e){
+      console.error("Web search error:",e);
+      doSend(parts);
+    });
   }
 }
 
