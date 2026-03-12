@@ -6,30 +6,38 @@ from _storage import upload_files
 
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
-        ct = self.headers.get("Content-Type", "")
-        bnd = None
-        for p in ct.split(";"):
-            p = p.strip()
-            if p.startswith("boundary="):
-                bnd = p[9:].strip().strip('"')
-        if not bnd:
-            self._json(400, {"error": "no boundary"})
-            return
+        try:
+            ct = self.headers.get("Content-Type", "")
+            bnd = None
+            for p in ct.split(";"):
+                p = p.strip()
+                if p.startswith("boundary="):
+                    bnd = p[9:].strip().strip('"')
+            if not bnd:
+                self._json(400, {"error": "no boundary"})
+                return
 
-        length = int(self.headers.get("Content-Length", 0))
-        body = self.rfile.read(length)
-        files = parse_multipart(body, bnd)
-        if not files:
-            self._json(400, {"error": "no files"})
-            return
+            length = int(self.headers.get("Content-Length", 0))
+            if length > 4 * 1024 * 1024:
+                self._json(413, {"error": "Файл слишком большой (макс. 4MB)"})
+                return
 
-        uploaded = upload_files(files)
-        b = json.dumps({"uploaded": uploaded}, ensure_ascii=False).encode()
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.end_headers()
-        self.wfile.write(b)
+            body = self.rfile.read(length)
+            files = parse_multipart(body, bnd)
+            if not files:
+                self._json(400, {"error": "no files"})
+                return
+
+            uploaded = upload_files(files)
+            b = json.dumps({"uploaded": uploaded}, ensure_ascii=False).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(b)
+        except Exception as e:
+            import traceback
+            self._json(500, {"error": str(e), "trace": traceback.format_exc()})
 
     def _json(self, code, obj):
         b = json.dumps(obj).encode()

@@ -441,10 +441,16 @@ fi.addEventListener("change",function(){if(fi.files.length)upload(fi.files);fi.v
 function upload(fl){
   document.getElementById("uprog").classList.add("on");
   var fd=new FormData();for(var i=0;i<fl.length;i++)fd.append("file",fl[i]);
-  fetch("/api/upload",{method:"POST",body:fd}).then(function(r){return r.json()}).then(function(d){
+  fetch("/api/upload",{method:"POST",body:fd}).then(function(r){
+    if(!r.ok) return r.text().then(function(t){
+      var msg;try{msg=JSON.parse(t).error}catch(x){msg="Сервер: "+t.substring(0,120)}
+      throw new Error(msg);
+    });
+    return r.json();
+  }).then(function(d){
     if(d.error){alert(d.error)}
     else if(d.uploaded){for(var j=0;j<d.uploaded.length;j++)files.push(d.uploaded[j]);render();stats()}
-  }).catch(function(e){alert("Upload:"+e.message)}).finally(function(){
+  }).catch(function(e){alert("Ошибка загрузки: "+e.message)}).finally(function(){
     document.getElementById("uprog").classList.remove("on");
   });
 }
@@ -784,7 +790,13 @@ send=function(){
   var names=chatFiles.map(function(f){return f.name});
   chatFiles=[];renderChatAttach();
   showStatus("📎 Загрузка "+names.length+" файл(ов)...");
-  fetch("/api/upload",{method:"POST",body:fd}).then(function(r){return r.json()}).then(function(d){
+  fetch("/api/upload",{method:"POST",body:fd}).then(function(r){
+    if(!r.ok) return r.text().then(function(t){
+      var msg;try{msg=JSON.parse(t).error}catch(x){msg="Сервер: "+t.substring(0,120)}
+      throw new Error(msg);
+    });
+    return r.json();
+  }).then(function(d){
     if(d.uploaded){
       for(var j=0;j<d.uploaded.length;j++) files.push(d.uploaded[j]);
       render();stats();
