@@ -191,11 +191,11 @@ select.hbtn option{background:var(--s);color:var(--t)}
 <div style="display:flex;align-items:center;gap:6px;padding:4px 0"><div class="sdot" id="sdot"></div><span style="font-size:9px;font-family:'Space Mono',monospace;color:var(--t2)">Статус</span></div>
 </div>
 <div id="instrBar">
-<div class="ihead"><label>⚖️ MILEAN — Встроенная инструкция</label><button onclick="togInstr()">✕</button></div>
+<div class="ihead"><label>⚖️ MILEAN — Инструкция</label><div style="display:flex;gap:6px"><button id="instrEditBtn" onclick="toggleInstrEdit()" style="background:var(--s2);border:1px solid var(--bd);border-radius:5px;padding:2px 10px;font-size:10px;font-family:'Space Mono',monospace;color:var(--t2);cursor:pointer">✏️ Edit</button><button id="instrResetBtn" onclick="resetInstr()" style="background:var(--s2);border:1px solid var(--bd);border-radius:5px;padding:2px 10px;font-size:10px;font-family:'Space Mono',monospace;color:var(--t2);cursor:pointer;display:none">↩ Reset</button><button onclick="togInstr()" style="background:none;border:none;color:var(--t2);cursor:pointer;font-size:16px">✕</button></div></div>
 <div id="instrPreview" style="background:var(--s);border:1px solid var(--bd);border-radius:7px;color:var(--t2);font-size:11px;padding:10px 12px;line-height:1.6;max-height:300px;overflow-y:auto;white-space:pre-wrap;word-break:break-word"></div>
+<textarea id="instrTxt" style="display:none;background:var(--s);border:1px solid var(--ac);border-radius:7px;color:var(--t);font-family:'Syne',sans-serif;font-size:12px;padding:10px 12px;outline:none;resize:vertical;min-height:200px;max-height:400px;line-height:1.5;width:100%" oninput="updDot()"></textarea>
 <div class="ifoot"><span style="color:var(--ac)">✅ Всегда активна</span><span style="font-size:9px;font-family:'Space Mono',monospace;color:var(--t2)">Отправляется с каждым сообщением</span></div>
 </div>
-<textarea id="instrTxt" hidden></textarea>
 <div id="projPanel">
 <div class="pj-head"><h3>📂 Проекты</h3><button class="pj-add" onclick="createProject()" title="Новый проект">+</button></div>
 <div class="pj-list" id="pjList"><div class="pj-empty">Нет проектов</div></div>
@@ -352,10 +352,50 @@ var MILEAN_INSTR="Ты — высококлассный российский ю�
 document.getElementById("instrTxt").value=MILEAN_INSTR;
 document.getElementById("instrPreview").textContent=MILEAN_INSTR;
 
+var instrEditing=false;
 function togInstr(){
   var b=document.getElementById("instrBar");
   b.classList.toggle("open");
+  if(!b.classList.contains("open")&&instrEditing) saveInstrEdit();
   document.getElementById("ibtn").classList.toggle("on",b.classList.contains("open")||true);
+}
+function toggleInstrEdit(){
+  var preview=document.getElementById("instrPreview");
+  var txt=document.getElementById("instrTxt");
+  var btn=document.getElementById("instrEditBtn");
+  var rbtn=document.getElementById("instrResetBtn");
+  if(!instrEditing){
+    instrEditing=true;
+    txt.value=preview.textContent;
+    preview.style.display="none";
+    txt.style.display="block";
+    txt.focus();
+    btn.textContent="💾 Save";
+    btn.style.borderColor="var(--ac)";btn.style.color="var(--ac)";
+    rbtn.style.display="inline-block";
+  } else {
+    saveInstrEdit();
+  }
+}
+function saveInstrEdit(){
+  var preview=document.getElementById("instrPreview");
+  var txt=document.getElementById("instrTxt");
+  var btn=document.getElementById("instrEditBtn");
+  var rbtn=document.getElementById("instrResetBtn");
+  instrEditing=false;
+  preview.textContent=txt.value;
+  preview.style.display="";
+  txt.style.display="none";
+  btn.textContent="✏️ Edit";
+  btn.style.borderColor="";btn.style.color="";
+  rbtn.style.display="none";
+  saveCurrentState();
+}
+function resetInstr(){
+  if(!confirm("Сбросить инструкцию к стандартной MILEAN?"))return;
+  document.getElementById("instrTxt").value=MILEAN_INSTR;
+  document.getElementById("instrPreview").textContent=MILEAN_INSTR;
+  saveInstrEdit();
 }
 function updDot(){document.getElementById("idot").classList.add("v")}
 function togFiles(){
