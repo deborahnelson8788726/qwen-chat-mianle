@@ -7,6 +7,9 @@
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2376b900'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='22' fill='%230a0a0f'%3EM%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<script>if(window.pdfjsLib)pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";</script>
 <style>
 :root{--bg:#0a0a0f;--s:#111118;--s2:#1a1a24;--bd:#2a2a3a;--ac:#76b900;--ac2:#a8e000;--t:#e8e8f0;--t2:#8888a0;--ub:#1e2a0e;--ab:#14141e;--gl:rgba(118,185,0,.15);--info:#4488ff}
 *{box-sizing:border-box;margin:0;padding:0}
@@ -275,6 +278,192 @@ window.addEventListener("unhandledrejection",function(e){
 var API="/api/proxy",MDL="qwen/qwen3.5-397b-a17b";
 var hist=[],loading=false,files=[],ragSrc=[],allOn=true,thinkOn=false,txtMode=false,docMode=false;
 
+// === INDEXEDDB CLIENT-SIDE FILE STORAGE ===
+var MILEAN_DB_NAME="milean_files_db",MILEAN_DB_VER=1;
+function openMileanDB(){
+  return new Promise(function(resolve,reject){
+    var req=indexedDB.open(MILEAN_DB_NAME,MILEAN_DB_VER);
+    req.onupgradeneeded=function(e){
+      var db=e.target.result;
+      if(!db.objectStoreNames.contains("chunks")){
+        var store=db.createObjectStore("chunks",{keyPath:"id",autoIncrement:true});
+        store.createIndex("fileId","fileId",{unique:false});
+        store.createIndex("projectId","projectId",{unique:false});
+      }
+    };
+    req.onsuccess=function(e){resolve(e.target.result)};
+    req.onerror=function(e){reject(e.target.error)};
+  });
+}
+function dbStoreChunks(fileId,projectId,chunks){
+  return openMileanDB().then(function(db){
+    return new Promise(function(resolve,reject){
+      var tx=db.transaction("chunks","readwrite");
+      var store=tx.objectStore("chunks");
+      for(var i=0;i<chunks.length;i++){
+        store.add({fileId:fileId,projectId:projectId,text:chunks[i],idx:i});
+      }
+      tx.oncomplete=function(){resolve()};
+      tx.onerror=function(e){reject(e.target.error)};
+    });
+  });
+}
+function dbGetChunks(projectId,enabledFileIds){
+  return openMileanDB().then(function(db){
+    return new Promise(function(resolve,reject){
+      var tx=db.transaction("chunks","readonly");
+      var store=tx.objectStore("chunks");
+      var idx=store.index("projectId");
+      var req=idx.getAll(projectId);
+      req.onsuccess=function(){
+        var all=req.result||[];
+        if(enabledFileIds){
+          all=all.filter(function(c){return enabledFileIds.indexOf(c.fileId)!==-1});
+        }
+        resolve(all);
+      };
+      req.onerror=function(e){reject(e.target.error)};
+    });
+  });
+}
+function dbDeleteFileChunks(fileId){
+  return openMileanDB().then(function(db){
+    return new Promise(function(resolve,reject){
+      var tx=db.transaction("chunks","readwrite");
+      var store=tx.objectStore("chunks");
+      var idx=store.index("fileId");
+      var req=idx.openCursor(fileId);
+      req.onsuccess=function(e){
+        var cursor=e.target.result;
+        if(cursor){cursor.delete();cursor.continue()}
+        else resolve();
+      };
+      req.onerror=function(e){reject(e.target.error)};
+    });
+  });
+}
+function dbDeleteProjectChunks(projectId){
+  return openMileanDB().then(function(db){
+    return new Promise(function(resolve,reject){
+      var tx=db.transaction("chunks","readwrite");
+      var store=tx.objectStore("chunks");
+      var idx=store.index("projectId");
+      var req=idx.openCursor(projectId);
+      req.onsuccess=function(e){
+        var cursor=e.target.result;
+        if(cursor){cursor.delete();cursor.continue()}
+        else resolve();
+      };
+      req.onerror=function(e){reject(e.target.error)};
+    });
+  });
+}
+
+// === TEXT EXTRACTION ===
+function extractTextFromPDF(file){
+  return new Promise(function(resolve,reject){
+    var reader=new FileReader();
+    reader.onload=function(){
+      var arr=new Uint8Array(reader.result);
+      pdfjsLib.getDocument({data:arr}).promise.then(function(pdf){
+        var pages=[];
+        function getPage(n){
+          if(n>pdf.numPages){resolve(pages.join("\n\n"));return}
+          pdf.getPage(n).then(function(page){
+            page.getTextContent().then(function(tc){
+              var txt=tc.items.map(function(it){return it.str}).join(" ");
+              pages.push(txt);
+              getPage(n+1);
+            });
+          }).catch(function(){getPage(n+1)});
+        }
+        getPage(1);
+      }).catch(function(e){reject(e)});
+    };
+    reader.onerror=function(){reject(reader.error)};
+    reader.readAsArrayBuffer(file);
+  });
+}
+function extractTextFromDOCX(file){
+  return new Promise(function(resolve,reject){
+    var reader=new FileReader();
+    reader.onload=function(){
+      mammoth.extractRawText({arrayBuffer:reader.result}).then(function(res){
+        resolve(res.value||"");
+      }).catch(function(e){reject(e)});
+    };
+    reader.onerror=function(){reject(reader.error)};
+    reader.readAsArrayBuffer(file);
+  });
+}
+function extractTextFromPlain(file){
+  return new Promise(function(resolve,reject){
+    var reader=new FileReader();
+    reader.onload=function(){resolve(reader.result||"")};
+    reader.onerror=function(){reject(reader.error)};
+    reader.readAsText(file,"UTF-8");
+  });
+}
+function extractText(file){
+  var name=file.name.toLowerCase();
+  if(name.endsWith(".pdf")) return extractTextFromPDF(file);
+  if(name.endsWith(".docx")) return extractTextFromDOCX(file);
+  if(name.endsWith(".txt")||name.endsWith(".md")||name.endsWith(".csv")||name.endsWith(".json")||name.endsWith(".js")||name.endsWith(".py")||name.endsWith(".html")||name.endsWith(".xml")||name.endsWith(".log"))
+    return extractTextFromPlain(file);
+  // For .doc (old format) try as text fallback
+  if(name.endsWith(".doc")) return extractTextFromPlain(file);
+  return Promise.resolve("");
+}
+
+// === CHUNKING ===
+function chunkText(text,size){
+  if(!size)size=500;
+  var chunks=[],sentences=text.split(/(?<=[.!?。\n])\s+/);
+  var cur="";
+  for(var i=0;i<sentences.length;i++){
+    if((cur+sentences[i]).length>size&&cur.length>0){
+      chunks.push(cur.trim());cur="";
+    }
+    cur+=sentences[i]+" ";
+  }
+  if(cur.trim())chunks.push(cur.trim());
+  return chunks;
+}
+
+// === LOCAL RAG SEARCH ===
+function localSearch(query,chunks,topK){
+  if(!topK)topK=8;
+  if(!chunks.length)return[];
+  var qWords=query.toLowerCase().replace(/[^\wа-яёА-ЯЁ\s]/g,"").split(/\s+/).filter(function(w){return w.length>2});
+  if(!qWords.length)return chunks.slice(0,topK);
+  var scored=[];
+  for(var i=0;i<chunks.length;i++){
+    var txt=chunks[i].text.toLowerCase();
+    var score=0;
+    for(var j=0;j<qWords.length;j++){
+      var idx=0,cnt=0;
+      while((idx=txt.indexOf(qWords[j],idx))!==-1){cnt++;idx+=qWords[j].length}
+      score+=cnt;
+    }
+    if(score>0)scored.push({chunk:chunks[i],score:score});
+  }
+  scored.sort(function(a,b){return b.score-a.score});
+  return scored.slice(0,topK).map(function(s){return s.chunk});
+}
+
+// === LOCAL STATS ===
+function localStats(){
+  var enabledFiles=files.filter(function(f){return f.enabled!==false});
+  var totalChunks=0,totalChars=0;
+  for(var i=0;i<enabledFiles.length;i++){
+    totalChunks+=(enabledFiles[i].chunks||0);
+    totalChars+=(enabledFiles[i].chars||0);
+  }
+  document.getElementById("sf").textContent=enabledFiles.length;
+  document.getElementById("sc").textContent=totalChunks;
+  document.getElementById("sk").textContent=(totalChars/1000).toFixed(0)+"K";
+}
+
 // === PROJECT MANAGEMENT ===
 var projects=[], activeProjectId=null;
 function genId(){return Date.now().toString(36)+Math.random().toString(36).substr(2,5)}
@@ -328,6 +517,7 @@ function switchProject(id){
 function deleteProject(id){
   if(projects.length<=1){alert("Нельзя удалить единственный проект");return}
   if(!confirm("Удалить проект?"))return;
+  dbDeleteProjectChunks(id).catch(function(e){console.error("DB cleanup error:",e)});
   projects=projects.filter(function(p){return p.id!==id});
   if(activeProjectId===id){activeProjectId=projects[0].id;switchProject(activeProjectId)}
   saveProjects();renderProjects();
@@ -440,49 +630,58 @@ fi.addEventListener("change",function(){if(fi.files.length)upload(fi.files);fi.v
 
 function upload(fl){
   document.getElementById("uprog").classList.add("on");
-  var fd=new FormData();for(var i=0;i<fl.length;i++)fd.append("file",fl[i]);
-  fetch("/api/upload",{method:"POST",body:fd}).then(function(r){
-    if(!r.ok) return r.text().then(function(t){
-      var msg;try{msg=JSON.parse(t).error}catch(x){msg="Сервер: "+t.substring(0,120)}
-      throw new Error(msg);
-    });
-    return r.json();
-  }).then(function(d){
-    if(d.error){alert(d.error)}
-    else if(d.uploaded){for(var j=0;j<d.uploaded.length;j++)files.push(d.uploaded[j]);render();stats()}
-  }).catch(function(e){alert("Ошибка загрузки: "+e.message)}).finally(function(){
+  var projId=activeProjectId;
+  var promises=[];
+  for(var i=0;i<fl.length;i++){
+    (function(file){
+      var fid=genId();
+      promises.push(
+        extractText(file).then(function(text){
+          var chunks=chunkText(text,500);
+          return dbStoreChunks(fid,projId,chunks).then(function(){
+            var fobj={id:fid,name:file.name,size:file.size,enabled:true,chunks:chunks.length,chars:text.length};
+            files.push(fobj);
+            return fobj;
+          });
+        }).catch(function(e){
+          console.error("Extract error for "+file.name+":",e);
+          // Still add file even if extraction fails
+          var fobj={id:fid,name:file.name,size:file.size,enabled:true,chunks:0,chars:0};
+          files.push(fobj);
+          return fobj;
+        })
+      );
+    })(fl[i]);
+  }
+  Promise.all(promises).then(function(){
+    render();localStats();saveCurrentState();
+  }).catch(function(e){
+    alert("Ошибка обработки: "+e.message);
+  }).finally(function(){
     document.getElementById("uprog").classList.remove("on");
   });
 }
 
 function togFile(id){
-  fetch("/api/files/toggle?id="+id,{method:"POST"}).then(function(r){return r.json()}).then(function(d){
-    for(var i=0;i<files.length;i++){if(files[i].id===id){files[i].enabled=d.enabled;break}}
-    render();stats();
-  });
+  for(var i=0;i<files.length;i++){
+    if(files[i].id===id){files[i].enabled=!files[i].enabled;break}
+  }
+  render();localStats();saveCurrentState();
 }
 
 function togAll(){
   allOn=!allOn;
-  fetch("/api/files/toggle-all",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled:allOn})}).then(function(r){return r.json()}).then(function(){
-    for(var i=0;i<files.length;i++)files[i].enabled=allOn;
-    render();stats();
-  });
+  for(var i=0;i<files.length;i++)files[i].enabled=allOn;
+  render();localStats();saveCurrentState();
 }
 
 function remFile(id){
-  fetch("/api/files/delete?id="+id,{method:"POST"}).then(function(){
-    files=files.filter(function(f){return f.id!==id});render();stats();
-  });
+  dbDeleteFileChunks(id).catch(function(e){console.error("DB delete error:",e)});
+  files=files.filter(function(f){return f.id!==id});
+  render();localStats();saveCurrentState();
 }
 
-function stats(){
-  fetch("/api/stats").then(function(r){return r.json()}).then(function(d){
-    document.getElementById("sf").textContent=d.enabled_files;
-    document.getElementById("sc").textContent=d.total_chunks;
-    document.getElementById("sk").textContent=(d.total_chars/1000).toFixed(0)+"K";
-  });
-}
+function stats(){localStats()}
 
 function render(){
   var list=document.getElementById("flist"),empty=document.getElementById("fempty"),badge=document.getElementById("fbadge");
@@ -725,28 +924,31 @@ function send(){
   var instr=document.getElementById("instrTxt").value.trim();
   if(instr)sysParts.push(instr);
 
-  var enCount=files.filter(function(f){return f.enabled!==false}).length;
+  var enabledFiles=files.filter(function(f){return f.enabled!==false});
+  var enCount=enabledFiles.length;
   console.log("Enabled files:",enCount);
 
   if(enCount>0){
     showStatus("🔍 RAG поиск по "+enCount+" файлам...");
-    fetch("/api/search",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({query:text})
-    }).then(function(r){return r.json()}).then(function(sd){
-      console.log("RAG result: chunks=",sd.chunks_found,"files=",sd.files_used&&sd.files_used.length);
-      if(sd.context&&sd.chunks_found>0){
-        sysParts.push("У тебя есть доступ к базе знаний пользователя. Ниже приведены релевантные фрагменты из загруженных документов. Используй эту информацию для ответа. Если пользователь спрашивает про файл или документ — отвечай на основе этих данных.\n\n"+sd.context);
-        ragSrc=sd.files_used||[];
+    var enabledIds=enabledFiles.map(function(f){return f.id});
+    dbGetChunks(activeProjectId,enabledIds).then(function(allChunks){
+      console.log("Local RAG: total chunks=",allChunks.length);
+      var found=localSearch(text,allChunks,8);
+      if(found.length>0){
+        var context=found.map(function(c,i){return "["+(i+1)+"] "+c.text}).join("\n\n");
+        sysParts.push("У тебя есть доступ к базе знаний пользователя. Ниже приведены релевантные фрагменты из загруженных документов. Используй эту информацию для ответа. Если пользователь спрашивает про файл или документ — отвечай на основе этих данных.\n\n"+context);
+        // Find source file names
+        var usedIds={};for(var k=0;k<found.length;k++) usedIds[found[k].fileId]=true;
+        ragSrc=files.filter(function(f){return usedIds[f.id]}).map(function(f){return f.name});
+        console.log("RAG result: chunks=",found.length,"files=",ragSrc.length);
       } else {
-        var fnames=files.filter(function(f){return f.enabled!==false}).map(function(f){return f.name});
-        if(fnames.length>0){
-          sysParts.push("У тебя есть доступ к базе знаний пользователя. Загруженные файлы: "+fnames.join(", ")+". Поиск не нашёл релевантных фрагментов по запросу. Если пользователь спрашивает про содержимое файла — сообщи что файл загружен и предложи задать более конкретный вопрос по содержимому документа.");
-        }
+        var fnames=enabledFiles.map(function(f){return f.name});
+        sysParts.push("У тебя есть доступ к базе знаний пользователя. Загруженные файлы: "+fnames.join(", ")+". Поиск не нашёл релевантных фрагментов по запросу. Если пользователь спрашивает про содержимое файла — сообщи что файл загружен и предложи задать более конкретный вопрос по содержимому документа.");
       }
       doSend(sysParts);
     }).catch(function(e){
-      console.error("RAG error:",e);
-      doSend(sysParts); // still send without RAG
+      console.error("Local RAG error:",e);
+      doSend(sysParts);
     });
   } else {
     doSend(sysParts);
@@ -780,32 +982,23 @@ function renderChatAttach(){
   }
 }
 
-// Override send to upload attached files first
+// Override send to process attached files first (locally)
 var origSend=send;
 send=function(){
   if(!chatFiles.length) return origSend();
-  // Upload files first, then send
-  var fd=new FormData();
-  for(var i=0;i<chatFiles.length;i++) fd.append("file",chatFiles[i]);
-  var names=chatFiles.map(function(f){return f.name});
+  var toProcess=chatFiles.slice();
   chatFiles=[];renderChatAttach();
-  showStatus("📎 Загрузка "+names.length+" файл(ов)...");
-  fetch("/api/upload",{method:"POST",body:fd}).then(function(r){
-    if(!r.ok) return r.text().then(function(t){
-      var msg;try{msg=JSON.parse(t).error}catch(x){msg="Сервер: "+t.substring(0,120)}
-      throw new Error(msg);
-    });
-    return r.json();
-  }).then(function(d){
-    if(d.uploaded){
-      for(var j=0;j<d.uploaded.length;j++) files.push(d.uploaded[j]);
-      render();stats();
+  showStatus("📎 Обработка "+toProcess.length+" файл(ов)...");
+  upload(toProcess);
+  // Wait a tick for processing, then send
+  var checkDone=setInterval(function(){
+    var prog=document.getElementById("uprog");
+    if(!prog.classList.contains("on")){
+      clearInterval(checkDone);
+      showStatus("");
+      origSend();
     }
-    showStatus("");
-    origSend();
-  }).catch(function(e){
-    showStatus("");showErr("Ошибка загрузки: "+e.message);
-  });
+  },200);
 };
 
 // Init
@@ -816,8 +1009,7 @@ if(ap){
   document.getElementById("instrTxt").value=ap.instr||"";
   if(ap.chatHTML) document.getElementById("msgs").innerHTML=ap.chatHTML;
 }
-renderProjects();render();
-fetch("/api/files").then(function(r){return r.json()}).then(function(d){files=d;render();stats()}).catch(function(){});
+renderProjects();render();localStats();
 document.getElementById("instrTxt").addEventListener("input",updDot);
 // Auto-save state periodically and on close
 setInterval(saveCurrentState,10000);
