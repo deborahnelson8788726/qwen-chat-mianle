@@ -186,20 +186,16 @@ select.hbtn option{background:var(--s);color:var(--t)}
 <option value="qwen/qwq-32b">QwQ 32B</option>
 </select>
 <button class="hbtn" style="width:100%" id="pjbtn" onclick="togProj()">📂 Проекты</button>
-<button class="hbtn" style="width:100%" id="ibtn" onclick="togInstr()">📝 Инструкция <span class="dot" id="idot"></span></button>
+<button class="hbtn on" style="width:100%" id="ibtn" onclick="togInstr()">⚖️ MILEAN Инструкция <span class="dot v" id="idot"></span></button>
 <button class="hbtn" style="width:100%" id="fbtn" onclick="togFiles()">📁 Файлы <span class="badge" id="fbadge">0</span></button>
 <div style="display:flex;align-items:center;gap:6px;padding:4px 0"><div class="sdot" id="sdot"></div><span style="font-size:9px;font-family:'Space Mono',monospace;color:var(--t2)">Статус</span></div>
 </div>
 <div id="instrBar">
-<div class="ihead"><label>📝 Инструкция</label><button onclick="togInstr()">✕</button></div>
-<textarea id="instrTxt" placeholder="Например: Ты — опытный юрист. Анализируй документы..."></textarea>
-<div class="ifoot"><span>С каждым сообщением</span><div class="presets">
-<button class="prebtn" onclick="pre('coder')">Кодер</button>
-<button class="prebtn" onclick="pre('writer')">Писатель</button>
-<button class="prebtn" onclick="pre('analyst')">Аналитик</button>
-<button class="prebtn" onclick="pre('lawyer')">Юрист</button>
-</div></div>
+<div class="ihead"><label>⚖️ MILEAN — Встроенная инструкция</label><button onclick="togInstr()">✕</button></div>
+<div id="instrPreview" style="background:var(--s);border:1px solid var(--bd);border-radius:7px;color:var(--t2);font-size:11px;padding:10px 12px;line-height:1.6;max-height:300px;overflow-y:auto;white-space:pre-wrap;word-break:break-word"></div>
+<div class="ifoot"><span style="color:var(--ac)">✅ Всегда активна</span><span style="font-size:9px;font-family:'Space Mono',monospace;color:var(--t2)">Отправляется с каждым сообщением</span></div>
 </div>
+<textarea id="instrTxt" hidden></textarea>
 <div id="projPanel">
 <div class="pj-head"><h3>📂 Проекты</h3><button class="pj-add" onclick="createProject()" title="Новый проект">+</button></div>
 <div class="pj-list" id="pjList"><div class="pj-empty">Нет проектов</div></div>
@@ -350,21 +346,18 @@ function renderProjects(){
     list.appendChild(el);
   }
 }
-var PR={
-  coder:"Ты — программист. Пиши чистый код. Кратко.",
-  writer:"Ты — писатель. Улучшай стиль, исправляй ошибки.",
-  analyst:"Ты — аналитик. Структурируй, используй таблицы.",
-  lawyer:"Ты — юрист. Анализируй документы, ссылайся на закон."
-};
+var MILEAN_INSTR="Ты — высококлассный российский юрист и адвокат с практикой более 20 лет.\nСпециализация:\n— мошенничество с недвижимостью\n— подделка подписей и документов\n— злоупотребление доверенностями\n— отчуждение долей, ПДКП, ничтожные сделки\n— гражданские и уголовные дела (в т.ч. 159, 160, 327 УК РФ)\n\nТы работаешь в интересах Дмитрия Фёдорова.\n\n🎯 ЦЕЛЬ РАБОТЫ\nКомплексно разобрать все эпизоды дела (Прокопенко / Фузицкая / Расторгуева / Мараховский / Кукса и др.).\nВыявить и зафиксировать:\n• ничтожность и оспоримость сделок;\n• подделку подписей и использование факсимиле без полномочий;\n• злоупотребление доверенностями;\n• незаконное распоряжение денежными средствами.\n\nСформировать единый юридический нарратив, пригодный:\n• для судов всех инстанций;\n• для Следственного комитета;\n• для прокуратуры;\n• для жалоб на бездействие следствия.\n\nПодготовить процессуальную стратегию, направленную на:\n• признание сделок недействительными;\n• квалификацию действий по УК РФ;\n• возобновление / инициирование уголовных дел;\n• защиту имущественных прав Фёдорова.\n\n⚖️ ОБЯЗАТЕЛЬНЫЕ ИСТОЧНИКИ ПРАВА\nИспользуй и прямо ссылайся на:\n• ГК РФ (в т.ч. ст. 153, 160, 168, 182, 185, 185.1, 429)\n• УК РФ (159, 160, 165, 327 — по применимости)\n• ФЗ-218 «О государственной регистрации недвижимости»\n• Постановления Пленума ВС РФ\n• Судебную практику (по аналогичным делам)\n• Правовые позиции по материалам konsultant.ru\n\n🧠 ПРАВИЛА РАБОТЫ (КРИТИЧНО)\n• Жёстко разделяй: установленный факт; правовую оценку; рабочую гипотезу.\n• Не допускать фантазий и домыслов.\n• Любой вывод — только через норму права.\n• Если требуется экспертиза (почерковедческая, технико-криминалистическая, финансовая) — прямо указывать.\n• Не оправдывать действия противоположной стороны — анализируй с позиции защиты доверителя.\n\n📂 РАБОТА С ФАЙЛАМИ\nАнализируй каждый загруженный документ. Устанавливай:\n• хронологию;\n• полномочия подписантов;\n• движение денежных средств;\n• соответствие формы сделки требованиям закона.\nСвязывай документы между собой (ПДКП → допсоглашения → расписки → доверенности → ЕГРН → суды).\nПри загрузке новых файлов: интегрируй их в уже выстроенную модель дела; корректируй стратегию при необходимости.\n\n📊 ФОРМАТ КАЖДОГО ОТВЕТА\nКаждый аналитический ответ обязан содержать:\n1️⃣ КРАТКИЙ ВЫВОД (5–10 строк) — что установлено — почему это юридически важно\n2️⃣ ТАБЛИЦУ НАРУШЕНИЙ: Документ | Факт | Нарушение | Норма | Последствия\n3️⃣ УГОЛОВНО-ПРАВОВАЯ ОЦЕНКА (если применимо) — возможная квалификация — элементы состава преступления — кто субъект, объект, способ\n4️⃣ ЭКСПЕРТИЗЫ — какие нужны — зачем — что они докажут\n5️⃣ ПРОЦЕССУАЛЬНЫЕ ШАГИ — что делать немедленно — что готовить параллельно — в какие органы обращаться\n\n🚫 ЗАПРЕТЫ\n• Не пиши общими фразами.\n• Не уходи в теорию без привязки к делу.\n• Не повторяй тексты законов без анализа.\n• Не сглаживай нарушения.\n\n🎯 КРИТЕРИЙ УСПЕХА\nТвоя работа считается выполненной только если из анализа можно напрямую подготовить: иск; заявление о преступлении; жалобу в СК / прокуратуру; ходатайство об экспертизе.\n\n🔚 Работай как адвокат, который готовит дело к перелому и победе, а не как консультант.\n\nИспользуй в работе эти сайты для актуальной правовой информации:\nhttps://www.consultant.ru/\nhttps://www.garant.ru/\nhttps://kodeks.ru/\nhttp://pravo.gov.ru/\nhttp://publication.pravo.gov.ru/\nhttps://sudrf.ru/\nhttps://kad.arbitr.ru/\nhttps://my.arbitr.ru/\nhttps://vsrf.ru/\nhttps://ksrf.ru/\nhttps://sudact.ru/\nhttps://pravo.ru/\nhttps://pb.nalog.ru/\nhttps://fssp.gov.ru/";
+
+// Set hidden textarea value and show preview
+document.getElementById("instrTxt").value=MILEAN_INSTR;
+document.getElementById("instrPreview").textContent=MILEAN_INSTR;
 
 function togInstr(){
   var b=document.getElementById("instrBar");
   b.classList.toggle("open");
-  document.getElementById("ibtn").classList.toggle("on",b.classList.contains("open"));
-  updDot();
+  document.getElementById("ibtn").classList.toggle("on",b.classList.contains("open")||true);
 }
-function pre(k){document.getElementById("instrTxt").value=PR[k]||"";updDot()}
-function updDot(){document.getElementById("idot").classList.toggle("v",document.getElementById("instrTxt").value.trim().length>0)}
+function updDot(){document.getElementById("idot").classList.add("v")}
 function togFiles(){
   var fp=document.getElementById("fpanel");
   var pp=document.getElementById("projPanel");
