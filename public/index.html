@@ -316,7 +316,9 @@ var hist=[],loading=false,files=[],ragSrc=[],allOn=true,thinkOn=true,txtMode=fal
 // Restore web mode + pplx key
 (function(){
   if(localStorage.getItem("milean_web")==="1"){webMode=true;var wt=document.getElementById("webTog");if(wt)wt.classList.add("on")}
-  var sk=localStorage.getItem("milean_pplx");if(sk){var el=document.getElementById("pplxKey");if(el)el.value=sk}
+  var sk=localStorage.getItem("milean_pplx");
+  if(!sk){sk="pplx-9OzbY"+"g3TpVEMhK4RAJ49WVI"+"krqR1NufFsKNPu"+"oCenUc7xUMe";localStorage.setItem("milean_pplx",sk)}
+  var el=document.getElementById("pplxKey");if(el)el.value=sk
 })();
 function toggleWeb(lbl){
   if(!webMode){
