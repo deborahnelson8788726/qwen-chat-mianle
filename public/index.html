@@ -188,7 +188,10 @@ select.hbtn option{background:var(--s);color:var(--t)}
 <button class="hbtn" style="width:100%" id="pjbtn" onclick="togProj()">📂 Проекты</button>
 <button class="hbtn on" style="width:100%" id="ibtn" onclick="togInstr()">⚖️ MILEAN Инструкция <span class="dot v" id="idot"></span></button>
 <button class="hbtn" style="width:100%" id="fbtn" onclick="togFiles()">📁 Файлы <span class="badge" id="fbadge">0</span></button>
-<div style="display:flex;align-items:center;gap:6px;padding:4px 0"><div class="sdot" id="sdot"></div><span style="font-size:9px;font-family:'Space Mono',monospace;color:var(--t2)">Статус</span></div>
+<div style="display:flex;align-items:center;gap:10px;padding:6px 0">
+<label onclick="txtMode=!txtMode;this.querySelector('.ftog').classList.toggle('on',txtMode)" style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:10px;font-family:'Space Mono',monospace;color:var(--t2)"><span class="ftog" id="txtTog">✓</span> TXT</label>
+<div style="display:flex;align-items:center;gap:6px"><div class="sdot" id="sdot"></div><span style="font-size:9px;font-family:'Space Mono',monospace;color:var(--t2)">Статус</span></div>
+</div>
 </div>
 <div id="instrBar">
 <div class="ihead"><label>⚖️ MILEAN — Инструкция</label><div style="display:flex;gap:6px"><button id="instrEditBtn" onclick="toggleInstrEdit()" style="background:var(--s2);border:1px solid var(--bd);border-radius:5px;padding:2px 10px;font-size:10px;font-family:'Space Mono',monospace;color:var(--t2);cursor:pointer">✏️ Edit</button><button id="instrResetBtn" onclick="resetInstr()" style="background:var(--s2);border:1px solid var(--bd);border-radius:5px;padding:2px 10px;font-size:10px;font-family:'Space Mono',monospace;color:var(--t2);cursor:pointer;display:none">↩ Reset</button><button onclick="togInstr()" style="background:none;border:none;color:var(--t2);cursor:pointer;font-size:16px">✕</button></div></div>
@@ -249,7 +252,7 @@ window.addEventListener("unhandledrejection",function(e){
 });
 
 var API="/api/proxy",MDL="qwen/qwen3.5-397b-a17b";
-var hist=[],loading=false,files=[],ragSrc=[],allOn=true,thinkOn=false;
+var hist=[],loading=false,files=[],ragSrc=[],allOn=true,thinkOn=false,txtMode=false;
 
 // === PROJECT MANAGEMENT ===
 var projects=[], activeProjectId=null;
@@ -483,6 +486,14 @@ function render(){
 
 function fmtSz(b){return b<1024?b+"B":b<1048576?(b/1024).toFixed(1)+"KB":(b/1048576).toFixed(1)+"MB"}
 
+function downloadTxt(text){
+  var d=new Date(),ts=d.getFullYear()+"-"+(""+(d.getMonth()+1)).padStart(2,"0")+"-"+(""+d.getDate()).padStart(2,"0")+"_"+(""+d.getHours()).padStart(2,"0")+(""+d.getMinutes()).padStart(2,"0");
+  var fn="milean_"+ts+".txt";
+  var blob=new Blob([text],{type:"text/plain;charset=utf-8"});
+  var a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=fn;
+  document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(a.href);
+}
+
 function showStatus(t){var s=document.getElementById("sbar"),st=document.getElementById("stxt");if(t){s.classList.add("v");st.textContent=t}else{s.classList.remove("v")}}
 function showErr(t){
   var msgs=document.getElementById("msgs");
@@ -597,6 +608,7 @@ function send(){
             loading=false;document.getElementById("sbtn").disabled=false;
             document.getElementById("sdot").style.background="#76b900";
             console.log("Stream done, content len:",content.length,"think len:",think.length);
+            if(txtMode) downloadTxt(content);
             saveCurrentState();renderProjects();
             return;
           }
