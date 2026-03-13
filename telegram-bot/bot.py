@@ -191,7 +191,7 @@ async def web_search(query: str) -> str:
 
 
 # ─── NVIDIA API CALL ───
-async def call_nvidia(messages: list, think: bool = True) -> str:
+async def call_nvidia(messages: list, think: bool = True) -> tuple:
     ssl_ctx = ssl.create_default_context()
     ssl_ctx.check_hostname = False
     ssl_ctx.verify_mode = ssl.CERT_NONE
@@ -213,28 +213,38 @@ async def call_nvidia(messages: list, think: bool = True) -> str:
         "Authorization": f"Bearer {NVIDIA_KEY}"
     }
 
-    async with aiohttp.ClientSession() as session:
-        async with session.post(
-            NVIDIA_URL,
-            json=payload,
-            headers=headers,
-            ssl=ssl_ctx,
-            timeout=aiohttp.ClientTimeout(total=180)
-        ) as resp:
-            if resp.status != 200:
-                err = await resp.text()
-                raise Exception(f"NVIDIA API {resp.status}: {err[:300]}")
-            data = await resp.json()
+    last_err = None
+    for attempt in range(3):
+        try:
+            timeout = aiohttp.ClientTimeout(total=180, connect=30)
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    NVIDIA_URL,
+                    json=payload,
+                    headers=headers,
+                    ssl=ssl_ctx,
+                    timeout=timeout
+                ) as resp:
+                    if resp.status != 200:
+                        err = await resp.text()
+                        raise Exception(f"NVIDIA API {resp.status}: {err[:300]}")
+                    data = await resp.json()
 
-    choice = data["choices"][0]["message"]
-    content = choice.get("content", "")
+            choice = data["choices"][0]["message"]
+            content = choice.get("content", "")
+            thinking = ""
+            if "reasoning_content" in choice and choice["reasoning_content"]:
+                thinking = choice["reasoning_content"]
+            return content, thinking
 
-    # Extract thinking if present
-    thinking = ""
-    if "reasoning_content" in choice and choice["reasoning_content"]:
-        thinking = choice["reasoning_content"]
+        except (asyncio.TimeoutError, aiohttp.ClientError) as e:
+            last_err = e
+            log.warning(f"NVIDIA attempt {attempt+1}/3 failed: {e}")
+            if attempt < 2:
+                await asyncio.sleep(2)
+            continue
 
-    return content, thinking
+    raise last_err or Exception("NVIDIA API недоступен после 3 попыток")
 
 
 # ─── TELEGRAM BOT ───
@@ -745,9 +755,19 @@ async def handle_message(msg: Message, state: FSMContext):
                 reply_markup=file_kb
             )
 
+    except asyncio.TimeoutError:
+        log.error("NVIDIA API timeout")
+        try:
+            await status_msg.edit_text("❌ Таймаут — NVIDIA API не ответил. Попробуйте ещё раз или отключите Think (/think)")
+        except:
+            pass
     except Exception as e:
-        log.error(f"Message handling error: {e}")
-        await status_msg.edit_text(f"❌ Ошибка: {e}")
+        err_msg = str(e) or type(e).__name__
+        log.error(f"Message handling error: {err_msg}", exc_info=True)
+        try:
+            await status_msg.edit_text(f"❌ Ошибка: {err_msg[:500]}")
+        except:
+            pass
 
 
 # ─── HELPER: update keyboard safely ───
