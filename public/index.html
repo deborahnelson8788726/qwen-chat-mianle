@@ -200,6 +200,14 @@ select.hbtn option{background:var(--s);color:var(--t)}
 .slotbtn:hover{border-color:var(--ac);color:var(--ac)}
 .slotbtn.active{background:var(--ac);border-color:var(--ac);color:var(--bg);font-weight:700}
 .slotbtn.saved{border-color:var(--ac);color:var(--ac);background:rgba(118,185,0,.1)}
+.pin-dot{width:14px;height:14px;border-radius:50%;border:2px solid var(--bd);background:transparent;transition:all .2s}
+.pin-dot.filled{background:var(--ac);border-color:var(--ac)}
+.pin-dot.err{background:#f55;border-color:#f55;animation:pinShake .4s}
+@keyframes pinShake{0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+.pin-key{width:64px;height:64px;border-radius:50%;border:2px solid var(--bd);background:var(--s);color:var(--t);font-size:24px;font-family:'Syne',sans-serif;font-weight:700;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center}
+.pin-key:hover{border-color:var(--ac);color:var(--ac);background:var(--s2)}
+.pin-key:active{transform:scale(.92);background:var(--ac);color:var(--bg)}
+.app-hidden .main,.app-hidden .side-toggle,.app-hidden .theme-toggle{display:none!important}
 .file-card{display:flex;align-items:center;gap:10px;background:rgba(118,185,0,.06);border:1px solid rgba(118,185,0,.2);border-radius:8px;padding:10px 14px;margin-top:8px;cursor:default}
 .file-card-icon{width:36px;height:36px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
 .file-card-icon.txt{background:rgba(118,185,0,.12);border:1px solid rgba(118,185,0,.25)}
@@ -220,6 +228,33 @@ body.light .sdot{background:var(--ac);box-shadow:0 0 6px var(--ac)}
 </style>
 </head>
 <body>
+<!-- PIN LOCK SCREEN -->
+<div id="pinScreen" style="position:fixed;inset:0;z-index:9999;background:var(--bg);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:24px">
+<div style="text-align:center">
+<div style="width:56px;height:56px;background:var(--ac);border-radius:14px;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;font-size:28px;font-weight:800;color:var(--bg);font-family:'Syne',sans-serif">M</div>
+<h2 style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--t);margin-bottom:6px">MILEAN</h2>
+<p style="font-size:12px;color:var(--t2);font-family:'Space Mono',monospace">Введите PIN-код для входа</p>
+</div>
+<div id="pinDots" style="display:flex;gap:12px">
+<div class="pin-dot" id="pd0"></div><div class="pin-dot" id="pd1"></div><div class="pin-dot" id="pd2"></div>
+<div class="pin-dot" id="pd3"></div><div class="pin-dot" id="pd4"></div><div class="pin-dot" id="pd5"></div>
+</div>
+<div id="pinErr" style="font-size:11px;font-family:'Space Mono',monospace;color:#f55;height:16px"></div>
+<div id="pinPad" style="display:grid;grid-template-columns:repeat(3,64px);gap:10px">
+<button class="pin-key" onclick="pinInput(1)">1</button>
+<button class="pin-key" onclick="pinInput(2)">2</button>
+<button class="pin-key" onclick="pinInput(3)">3</button>
+<button class="pin-key" onclick="pinInput(4)">4</button>
+<button class="pin-key" onclick="pinInput(5)">5</button>
+<button class="pin-key" onclick="pinInput(6)">6</button>
+<button class="pin-key" onclick="pinInput(7)">7</button>
+<button class="pin-key" onclick="pinInput(8)">8</button>
+<button class="pin-key" onclick="pinInput(9)">9</button>
+<button class="pin-key" style="visibility:hidden"></button>
+<button class="pin-key" onclick="pinInput(0)">0</button>
+<button class="pin-key" onclick="pinDelete()" style="font-size:18px">⌫</button>
+</div>
+</div>
 <button class="side-toggle" id="sideToggle" onclick="toggleSidebar()">☰</button>
 <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()">🌙 <span>Тема</span></button>
 <div id="keybar" style="display:none"><input type="password" id="apiKey" value="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"/><input type="password" id="pplxKey" value=""/></div>
@@ -340,6 +375,66 @@ body.light .sdot{background:var(--ac);box-shadow:0 0 6px var(--ac)}
 </div>
 
 <script>
+// === PIN LOCK ===
+var PIN_CODE="321345";
+var pinVal="";
+var pinUnlocked=sessionStorage.getItem("milean_unlocked")==="1";
+
+function pinInit(){
+  if(pinUnlocked){
+    document.getElementById("pinScreen").style.display="none";
+    document.body.classList.remove("app-hidden");
+    return;
+  }
+  document.body.classList.add("app-hidden");
+}
+
+function pinInput(n){
+  if(pinVal.length>=6)return;
+  pinVal+=String(n);
+  pinUpdateDots();
+  if(pinVal.length===6){
+    setTimeout(function(){
+      if(pinVal===PIN_CODE){
+        pinUnlocked=true;
+        sessionStorage.setItem("milean_unlocked","1");
+        var ps=document.getElementById("pinScreen");
+        ps.style.transition="opacity .4s";ps.style.opacity="0";
+        setTimeout(function(){ps.style.display="none";document.body.classList.remove("app-hidden")},400);
+      } else {
+        document.getElementById("pinErr").textContent="Неверный PIN-код";
+        var dots=document.querySelectorAll(".pin-dot");
+        for(var i=0;i<dots.length;i++){dots[i].classList.add("err");dots[i].classList.remove("filled")}
+        setTimeout(function(){
+          pinVal="";pinUpdateDots();
+          document.getElementById("pinErr").textContent="";
+          var d2=document.querySelectorAll(".pin-dot");for(var j=0;j<d2.length;j++)d2[j].classList.remove("err");
+        },600);
+      }
+    },150);
+  }
+}
+
+function pinDelete(){
+  if(pinVal.length>0){pinVal=pinVal.slice(0,-1);pinUpdateDots()}
+}
+
+function pinUpdateDots(){
+  for(var i=0;i<6;i++){
+    var d=document.getElementById("pd"+i);
+    if(i<pinVal.length)d.classList.add("filled");else d.classList.remove("filled");
+  }
+}
+
+// Keyboard support for PIN
+document.addEventListener("keydown",function(e){
+  if(pinUnlocked||document.getElementById("pinScreen").style.display==="none")return;
+  if(e.key>="0"&&e.key<="9"){pinInput(parseInt(e.key));e.preventDefault()}
+  else if(e.key==="Backspace"){pinDelete();e.preventDefault()}
+});
+
+pinInit();
+
 // Catch ALL errors
 window.onerror=function(m,s,l,c,e){
   console.error("JS ERROR:",m,s,l,c,e);
