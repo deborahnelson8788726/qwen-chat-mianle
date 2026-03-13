@@ -300,9 +300,7 @@ body.light .sdot{background:var(--ac);box-shadow:0 0 6px var(--ac)}
 </div>
 <div id="rpanel">
 <div class="rp-resize" id="rpResize"></div>
-<div style="padding:8px 12px;border-bottom:1px solid var(--bd);display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-<span style="font-size:11px;font-family:'Space Mono',monospace;color:var(--ac);text-transform:uppercase;letter-spacing:.08em">✍️ Ввод</span>
-<span style="flex:1"></span>
+<div style="padding:6px 12px;border-bottom:1px solid var(--bd);display:flex;align-items:center;gap:6px">
 <span style="font-size:9px;font-family:'Space Mono',monospace;color:var(--t2)">Шрифт</span>
 <button onclick="changeFontSize(-1)" style="background:var(--s2);border:1px solid var(--bd);border-radius:4px;width:22px;height:22px;font-size:14px;color:var(--t);cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:700" title="Уменьшить шрифт">−</button>
 <span id="fontSizeLabel" style="font-size:9px;font-family:'Space Mono',monospace;color:var(--t2);min-width:20px;text-align:center">15</span>
@@ -808,10 +806,27 @@ var chatFontFamily=localStorage.getItem("milean_fontFamily")||"'Georgia',serif";
 
 function applyFont(){
   var chat=document.getElementById("chat");
-  if(chat){chat.style.fontSize=chatFontSize+"px";chat.style.fontFamily=chatFontFamily}
-  document.getElementById("fontSizeLabel").textContent=chatFontSize;
+  if(chat){
+    chat.style.fontSize=chatFontSize+"px";
+    chat.style.fontFamily=chatFontFamily;
+    // Apply to all message elements inside chat
+    var msgs=chat.querySelectorAll(".msg,.msg *,p,li,td,th,span,div,h1,h2,h3,h4,h5,h6,pre,code,blockquote");
+    for(var i=0;i<msgs.length;i++){
+      msgs[i].style.fontSize=chatFontSize+"px";
+      msgs[i].style.fontFamily=chatFontFamily;
+    }
+  }
+  var lbl=document.getElementById("fontSizeLabel");
+  if(lbl)lbl.textContent=chatFontSize;
   var sel=document.getElementById("fontSelect");
   if(sel){for(var i=0;i<sel.options.length;i++){if(sel.options[i].value===chatFontFamily){sel.selectedIndex=i;break}}}
+  // Inject CSS rule for future messages
+  var styleId="milean-font-style";
+  var existing=document.getElementById(styleId);
+  if(existing)existing.remove();
+  var st=document.createElement("style");st.id=styleId;
+  st.textContent="#chat,#chat *:not(svg):not(svg *){font-size:"+chatFontSize+"px !important;font-family:"+chatFontFamily+" !important}#chat code,#chat pre{font-family:'Space Mono',monospace !important}";
+  document.head.appendChild(st);
 }
 function changeFontSize(delta){
   chatFontSize=Math.max(10,Math.min(28,chatFontSize+delta));
