@@ -264,7 +264,8 @@ async def cmd_start(msg: Message):
         "📎 Отправьте файлы (PDF, DOCX, TXT) для анализа\n"
         "💬 Задайте вопрос — я отвечу с учётом загруженных документов\n"
         "🌐 Включите веб-поиск для актуальной информации\n\n"
-        "Используйте /help для списка команд",
+        "Используйте /help для списка команд\n"
+        "Используйте /panel для панели управления",
         parse_mode=ParseMode.HTML,
         reply_markup=kb
     )
@@ -289,9 +290,16 @@ async def cmd_help(msg: Message):
         "🧠 /think — вкл/выкл режим Think\n"
         "🔄 /clear — очистить историю чата\n"
         "⚙️ /settings — текущие настройки\n"
+        "🎛 /panel — панель управления с кнопками\n"
         "❓ /help — эта справка",
         parse_mode=ParseMode.HTML
     )
+
+
+@router.message(Command("panel"))
+async def cmd_panel(msg: Message):
+    u = get_user(msg.from_user.id)
+    await msg.answer(_get_status_text(u), parse_mode=ParseMode.HTML, reply_markup=get_main_keyboard(u))
 
 
 @router.message(Command("milean"))
@@ -742,21 +750,48 @@ async def handle_message(msg: Message, state: FSMContext):
         await status_msg.edit_text(f"❌ Ошибка: {e}")
 
 
+# ─── HELPER: update keyboard safely ───
+async def _update_kb(cb: CallbackQuery, u: dict, toast: str):
+    """Update keyboard on message, resend if edit fails"""
+    kb = get_main_keyboard(u)
+    status = _get_status_text(u)
+    await cb.answer(toast)
+    try:
+        await cb.message.edit_text(status, reply_markup=kb, parse_mode=ParseMode.HTML)
+    except Exception:
+        try:
+            await cb.message.edit_reply_markup(reply_markup=kb)
+        except Exception:
+            await cb.message.answer(status, reply_markup=kb, parse_mode=ParseMode.HTML)
+
+
+def _get_status_text(u: dict) -> str:
+    proj = u.get("project_name", "")
+    proj_txt = f"📂 {proj}" if proj else "📂 Нет проекта"
+    return (
+        f"⚖️ <b>MILEAN — Панель управления</b>\n\n"
+        f"{proj_txt}\n"
+        f"🌐 Web: {'✅ ВКЛ' if u['web_on'] else '❌ ВЫКЛ'} · "
+        f"🧠 Think: {'✅ ВКЛ' if u['think_on'] else '❌ ВЫКЛ'}\n"
+        f"📝 Инструкция: {'⚖️ MILEAN' if u['active_slot']=='milean' else ('✏️ Своя' if u['instr'] else '⛔ Нет')}\n"
+        f"📎 Файлов: {len(u['files'])} · 🧩 Чанков: {len(u['chunks'])}\n"
+        f"💬 История: {len(u['hist'])//2} сообщ."
+    )
+
+
 # ─── CALLBACK HANDLERS ───
 @router.callback_query(F.data == "toggle_web")
 async def cb_web(cb: CallbackQuery):
     u = get_user(cb.from_user.id)
     u["web_on"] = not u["web_on"]
-    await cb.answer(f"🌐 Веб-поиск: {'ВКЛ' if u['web_on'] else 'ВЫКЛ'}")
-    await cb.message.edit_reply_markup(reply_markup=get_main_keyboard(u))
+    await _update_kb(cb, u, f"🌐 Веб-поиск: {'ВКЛ' if u['web_on'] else 'ВЫКЛ'}")
 
 
 @router.callback_query(F.data == "toggle_think")
 async def cb_think(cb: CallbackQuery):
     u = get_user(cb.from_user.id)
     u["think_on"] = not u["think_on"]
-    await cb.answer(f"🧠 Think: {'ВКЛ' if u['think_on'] else 'ВЫКЛ'}")
-    await cb.message.edit_reply_markup(reply_markup=get_main_keyboard(u))
+    await _update_kb(cb, u, f"🧠 Think: {'ВКЛ' if u['think_on'] else 'ВЫКЛ'}")
 
 
 @router.callback_query(F.data == "load_milean")
@@ -764,8 +799,7 @@ async def cb_milean(cb: CallbackQuery):
     u = get_user(cb.from_user.id)
     u["instr"] = MILEAN_INSTR
     u["active_slot"] = "milean"
-    await cb.answer("⚖️ MILEAN загружена")
-    await cb.message.edit_reply_markup(reply_markup=get_main_keyboard(u))
+    await _update_kb(cb, u, "⚖️ MILEAN загружена")
 
 
 @router.callback_query(F.data == "clear_instr")
@@ -773,8 +807,7 @@ async def cb_clear_instr(cb: CallbackQuery):
     u = get_user(cb.from_user.id)
     u["instr"] = ""
     u["active_slot"] = "empty"
-    await cb.answer("🗑 Инструкция очищена")
-    await cb.message.edit_reply_markup(reply_markup=get_main_keyboard(u))
+    await _update_kb(cb, u, "🗑 Инструкция очищена")
 
 
 # ─── DOWNLOAD HANDLERS ───
@@ -1011,6 +1044,7 @@ async def set_commands():
         BotCommand(command="think", description="🧠 Вкл/выкл Think"),
         BotCommand(command="files", description="📎 Список файлов"),
         BotCommand(command="clear", description="🔄 Очистить историю"),
+        BotCommand(command="panel", description="🎛 Панель управления"),
         BotCommand(command="connect", description="🔗 Подключить проект с web"),
         BotCommand(command="token", description="🔑 Как получить токен"),
         BotCommand(command="settings", description="⚙️ Настройки"),
