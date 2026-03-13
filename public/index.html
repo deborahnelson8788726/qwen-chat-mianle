@@ -153,7 +153,10 @@ select.hbtn option{background:var(--s);color:var(--t)}
 .m.a{align-self:stretch;align-items:flex-start}
 .ml{font-size:9px;font-family:'Space Mono',monospace;color:var(--t2);text-transform:uppercase;letter-spacing:.1em}
 .m.u .ml{color:var(--ac)}
-.mb{padding:12px 16px;border-radius:4px;font-size:14px;line-height:1.7;white-space:pre-wrap;word-break:break-word}
+.mb{padding:12px 16px;border-radius:4px;font-size:var(--chat-fs,14px);font-family:var(--chat-ff,inherit);line-height:1.7;white-space:pre-wrap;word-break:break-word}
+.mb *:not(code):not(pre):not(svg):not(svg *){font-size:inherit!important;font-family:inherit!important}
+.mb h1,.mb h2,.mb h3,.mb h4{font-size:calc(var(--chat-fs,14px) + 2px)!important;font-weight:700}
+.mb code,.mb pre{font-family:'Space Mono',monospace!important;font-size:calc(var(--chat-fs,14px) - 1px)!important}
 .m.u .mb{background:var(--ub);border:1px solid rgba(118,185,0,.25);border-radius:4px;color:#c8e88a}
 .m.a .mb{background:var(--ab);border:1px solid var(--bd);border-radius:4px}
 .rsrcs{display:flex;flex-wrap:wrap;gap:3px;margin-top:5px}
@@ -805,28 +808,12 @@ var chatFontSize=parseInt(localStorage.getItem("milean_fontSize"))||15;
 var chatFontFamily=localStorage.getItem("milean_fontFamily")||"'Georgia',serif";
 
 function applyFont(){
-  var chat=document.getElementById("chat");
-  if(chat){
-    chat.style.fontSize=chatFontSize+"px";
-    chat.style.fontFamily=chatFontFamily;
-    // Apply to all message elements inside chat
-    var msgs=chat.querySelectorAll(".msg,.msg *,p,li,td,th,span,div,h1,h2,h3,h4,h5,h6,pre,code,blockquote");
-    for(var i=0;i<msgs.length;i++){
-      msgs[i].style.fontSize=chatFontSize+"px";
-      msgs[i].style.fontFamily=chatFontFamily;
-    }
-  }
+  document.documentElement.style.setProperty("--chat-fs",chatFontSize+"px");
+  document.documentElement.style.setProperty("--chat-ff",chatFontFamily);
   var lbl=document.getElementById("fontSizeLabel");
   if(lbl)lbl.textContent=chatFontSize;
   var sel=document.getElementById("fontSelect");
   if(sel){for(var i=0;i<sel.options.length;i++){if(sel.options[i].value===chatFontFamily){sel.selectedIndex=i;break}}}
-  // Inject CSS rule for future messages
-  var styleId="milean-font-style";
-  var existing=document.getElementById(styleId);
-  if(existing)existing.remove();
-  var st=document.createElement("style");st.id=styleId;
-  st.textContent="#chat,#chat *:not(svg):not(svg *){font-size:"+chatFontSize+"px !important;font-family:"+chatFontFamily+" !important}#chat code,#chat pre{font-family:'Space Mono',monospace !important}";
-  document.head.appendChild(st);
 }
 function changeFontSize(delta){
   chatFontSize=Math.max(10,Math.min(28,chatFontSize+delta));
