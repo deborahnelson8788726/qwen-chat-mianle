@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MILEAN - Юридическая Компания</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2376b900'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='22' fill='%230a0a0f'%3EM%3C/text%3E%3C/svg%3E">
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&family=Georgia&family=Literata:wght@400;700&family=Merriweather:wght@400;700&family=PT+Serif:wght@400;700&family=Lora:wght@400;700&family=Source+Sans+Pro:wght@400;600;700&family=Inter:wght@400;500;700&family=Roboto:wght@400;500;700&family=Open+Sans:wght@400;600;700&family=Noto+Sans:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
@@ -300,7 +300,26 @@ body.light .sdot{background:var(--ac);box-shadow:0 0 6px var(--ac)}
 </div>
 <div id="rpanel">
 <div class="rp-resize" id="rpResize"></div>
-<div style="padding:10px 12px;border-bottom:1px solid var(--bd);font-size:11px;font-family:'Space Mono',monospace;color:var(--ac);text-transform:uppercase;letter-spacing:.08em">✍️ Ввод</div>
+<div style="padding:8px 12px;border-bottom:1px solid var(--bd);display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+<span style="font-size:11px;font-family:'Space Mono',monospace;color:var(--ac);text-transform:uppercase;letter-spacing:.08em">✍️ Ввод</span>
+<span style="flex:1"></span>
+<span style="font-size:9px;font-family:'Space Mono',monospace;color:var(--t2)">Шрифт</span>
+<button onclick="changeFontSize(-1)" style="background:var(--s2);border:1px solid var(--bd);border-radius:4px;width:22px;height:22px;font-size:14px;color:var(--t);cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:700" title="Уменьшить шрифт">−</button>
+<span id="fontSizeLabel" style="font-size:9px;font-family:'Space Mono',monospace;color:var(--t2);min-width:20px;text-align:center">15</span>
+<button onclick="changeFontSize(1)" style="background:var(--s2);border:1px solid var(--bd);border-radius:4px;width:22px;height:22px;font-size:14px;color:var(--t);cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:700" title="Увеличить шрифт">+</button>
+<select id="fontSelect" onchange="changeFont(this.value)" style="background:var(--s2);border:1px solid var(--bd);border-radius:4px;font-size:9px;font-family:'Space Mono',monospace;color:var(--t);padding:3px 6px;cursor:pointer;max-width:110px">
+<option value="'Georgia',serif">Georgia</option>
+<option value="'Literata',serif">Literata</option>
+<option value="'Merriweather',serif">Merriweather</option>
+<option value="'PT Serif',serif">PT Serif</option>
+<option value="'Lora',serif">Lora</option>
+<option value="'Source Sans Pro',sans-serif">Source Sans</option>
+<option value="'Inter',sans-serif">Inter</option>
+<option value="'Roboto',sans-serif">Roboto</option>
+<option value="'Open Sans',sans-serif">Open Sans</option>
+<option value="'Noto Sans',sans-serif">Noto Sans</option>
+</select>
+</div>
 <div id="ibar">
 <div id="sbar"><div class="spin"></div><span id="stxt"></span></div>
 <div id="chatAttach" style="display:none;padding:4px 0;display:flex;flex-wrap:wrap;gap:4px"></div>
@@ -782,6 +801,29 @@ function resetInstr(){
   saveInstrEdit();
 }
 function updDot(){document.getElementById("idot").classList.add("v")}
+
+// === FONT SIZE & FAMILY ===
+var chatFontSize=parseInt(localStorage.getItem("milean_fontSize"))||15;
+var chatFontFamily=localStorage.getItem("milean_fontFamily")||"'Georgia',serif";
+
+function applyFont(){
+  var chat=document.getElementById("chat");
+  if(chat){chat.style.fontSize=chatFontSize+"px";chat.style.fontFamily=chatFontFamily}
+  document.getElementById("fontSizeLabel").textContent=chatFontSize;
+  var sel=document.getElementById("fontSelect");
+  if(sel){for(var i=0;i<sel.options.length;i++){if(sel.options[i].value===chatFontFamily){sel.selectedIndex=i;break}}}
+}
+function changeFontSize(delta){
+  chatFontSize=Math.max(10,Math.min(28,chatFontSize+delta));
+  localStorage.setItem("milean_fontSize",chatFontSize);
+  applyFont();
+}
+function changeFont(family){
+  chatFontFamily=family;
+  localStorage.setItem("milean_fontFamily",family);
+  applyFont();
+}
+setTimeout(applyFont,100);
 function updateProjectLabel(){
   var p=getActiveProject();
   var label=document.getElementById("fprojName");
