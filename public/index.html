@@ -193,6 +193,10 @@ select.hbtn option{background:var(--s);color:var(--t)}
 .tswitch-track.on .tswitch-thumb{left:18px;background:#fff}
 .tswitch-label{font-size:10px;font-family:'Space Mono',monospace;color:var(--t2);transition:color .2s}
 .tswitch-track.on+.tswitch-label{color:var(--ac)}
+.slotbtn{background:var(--s2);border:1px solid var(--bd);border-radius:5px;padding:3px 8px;font-size:9px;font-family:'Space Mono',monospace;color:var(--t2);cursor:pointer;transition:all .15s;min-width:24px;text-align:center}
+.slotbtn:hover{border-color:var(--ac);color:var(--ac)}
+.slotbtn.active{background:var(--ac);border-color:var(--ac);color:var(--bg);font-weight:700}
+.slotbtn.saved{border-color:var(--ac);color:var(--ac);background:rgba(118,185,0,.1)}
 .file-card{display:flex;align-items:center;gap:10px;background:rgba(118,185,0,.06);border:1px solid rgba(118,185,0,.2);border-radius:8px;padding:10px 14px;margin-top:8px;cursor:default}
 .file-card-icon{width:36px;height:36px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
 .file-card-icon.txt{background:rgba(118,185,0,.12);border:1px solid rgba(118,185,0,.25)}
@@ -240,10 +244,25 @@ body.light .sdot{background:var(--ac);box-shadow:0 0 6px var(--ac)}
 <label onclick="ddgMode=!ddgMode;this.querySelector('.ftog').classList.toggle('on',ddgMode);localStorage.setItem('milean_ddg',ddgMode?'1':'0')" style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:10px;font-family:'Space Mono',monospace;color:var(--t2);padding:4px 0"><span class="ftog" id="ddgTog">✓</span> 🦆 DuckDuckGo</label>
 </div>
 <div id="instrBar">
-<div class="ihead"><label>⚖️ MILEAN — Инструкция</label><div style="display:flex;gap:6px"><button id="instrTogBtn" onclick="toggleInstrActive()" style="background:var(--ac);border:none;border-radius:5px;padding:2px 10px;font-size:10px;font-family:'Space Mono',monospace;color:var(--bg);cursor:pointer;font-weight:700">✅ ВКЛ</button><button id="instrEditBtn" onclick="toggleInstrEdit()" style="background:var(--s2);border:1px solid var(--bd);border-radius:5px;padding:2px 10px;font-size:10px;font-family:'Space Mono',monospace;color:var(--t2);cursor:pointer">✏️ Edit</button><button id="instrResetBtn" onclick="resetInstr()" style="background:var(--s2);border:1px solid var(--bd);border-radius:5px;padding:2px 10px;font-size:10px;font-family:'Space Mono',monospace;color:var(--t2);cursor:pointer;display:none">↩ Reset</button><button onclick="togInstr()" style="background:none;border:none;color:var(--t2);cursor:pointer;font-size:16px">✕</button></div></div>
+<div class="ihead"><label>⚖️ Инструкция</label><div style="display:flex;gap:6px"><button id="instrEditBtn" onclick="toggleInstrEdit()" style="background:var(--s2);border:1px solid var(--bd);border-radius:5px;padding:2px 10px;font-size:10px;font-family:'Space Mono',monospace;color:var(--t2);cursor:pointer">✏️ Edit</button><button id="instrResetBtn" onclick="resetInstr()" style="background:var(--s2);border:1px solid var(--bd);border-radius:5px;padding:2px 10px;font-size:10px;font-family:'Space Mono',monospace;color:var(--t2);cursor:pointer;display:none">↩ Reset</button><button onclick="togInstr()" style="background:none;border:none;color:var(--t2);cursor:pointer;font-size:16px">✕</button></div></div>
+<div id="instrSlots" style="padding:4px 12px 6px;display:flex;flex-wrap:wrap;gap:4px;border-bottom:1px solid var(--bd)">
+<button class="slotbtn active" id="slot_milean" onclick="loadSlot('milean')">⚖️ MILEAN</button>
+<button class="slotbtn" id="slot_1" onclick="loadSlot(1)" oncontextmenu="event.preventDefault();saveSlot(1)">1</button>
+<button class="slotbtn" id="slot_2" onclick="loadSlot(2)" oncontextmenu="event.preventDefault();saveSlot(2)">2</button>
+<button class="slotbtn" id="slot_3" onclick="loadSlot(3)" oncontextmenu="event.preventDefault();saveSlot(3)">3</button>
+<button class="slotbtn" id="slot_4" onclick="loadSlot(4)" oncontextmenu="event.preventDefault();saveSlot(4)">4</button>
+<button class="slotbtn" id="slot_5" onclick="loadSlot(5)" oncontextmenu="event.preventDefault();saveSlot(5)">5</button>
+<button class="slotbtn" id="slot_6" onclick="loadSlot(6)" oncontextmenu="event.preventDefault();saveSlot(6)">6</button>
+<button class="slotbtn" id="slot_7" onclick="loadSlot(7)" oncontextmenu="event.preventDefault();saveSlot(7)">7</button>
+<button class="slotbtn" id="slot_8" onclick="loadSlot(8)" oncontextmenu="event.preventDefault();saveSlot(8)">8</button>
+<button class="slotbtn" id="slot_9" onclick="loadSlot(9)" oncontextmenu="event.preventDefault();saveSlot(9)">9</button>
+<button class="slotbtn" id="slot_10" onclick="loadSlot(10)" oncontextmenu="event.preventDefault();saveSlot(10)">10</button>
+<button class="slotbtn" style="background:transparent;border-style:dashed;color:var(--t2)" id="slot_clear" onclick="loadSlot('empty')">✕ Пусто</button>
+</div>
+<div id="slotHint" style="padding:3px 12px;font-size:8px;font-family:'Space Mono',monospace;color:var(--t2);border-bottom:1px solid var(--bd)">ЛКМ = загрузить · ПКМ = сохранить текущую инструкцию в слот</div>
 <div id="instrPreview" style="background:var(--s);border:1px solid var(--bd);border-radius:7px;color:var(--t2);font-size:11px;padding:10px 12px;line-height:1.6;max-height:300px;overflow-y:auto;white-space:pre-wrap;word-break:break-word"></div>
 <textarea id="instrTxt" style="display:none;background:var(--s);border:1px solid var(--ac);border-radius:7px;color:var(--t);font-family:'Syne',sans-serif;font-size:12px;padding:10px 12px;outline:none;resize:vertical;min-height:200px;max-height:400px;line-height:1.5;width:100%" oninput="updDot()"></textarea>
-<div class="ifoot"><span id="instrStatus" style="color:var(--ac)">✅ Активна</span><span style="font-size:9px;font-family:'Space Mono',monospace;color:var(--t2)">Отправляется с каждым сообщением</span></div>
+<div class="ifoot"><span id="instrStatus" style="color:var(--ac)">⚖️ MILEAN</span><span style="font-size:9px;font-family:'Space Mono',monospace;color:var(--t2)">Отправляется с каждым сообщением</span></div>
 </div>
 <div id="projPanel">
 <div class="pj-head"><h3>📂 Проекты</h3><button class="pj-add" onclick="createProject()" title="Новый проект">+</button></div>
@@ -322,22 +341,74 @@ var hist=[],loading=false,files=[],ragSrc=[],allOn=true,thinkOn=true,txtMode=fal
   if(!sk){sk="pplx-9OzbY"+"g3TpVEMhK4RAJ49WVI"+"krqR1NufFsKNPu"+"oCenUc7xUMe";localStorage.setItem("milean_pplx",sk)}
   var el=document.getElementById("pplxKey");if(el)el.value=sk
 })();
-function toggleInstrActive(){
-  instrOn=!instrOn;
-  var btn=document.getElementById("instrTogBtn");
-  var st=document.getElementById("instrStatus");
+// === INSTRUCTION SLOTS ===
+var activeSlot="milean";
+function getSlots(){try{return JSON.parse(localStorage.getItem("milean_slots")||"{}")}catch(e){return{}}}
+function setSlots(s){localStorage.setItem("milean_slots",JSON.stringify(s))}
+
+function loadSlot(id){
+  if(instrEditing) saveInstrEdit();
   var prev=document.getElementById("instrPreview");
-  var ta=document.getElementById("instrTxt");
-  if(instrOn){
-    btn.textContent="✅ ВКЛ";btn.style.background="var(--ac)";btn.style.color="var(--bg)";
-    st.textContent="✅ Активна";st.style.color="var(--ac)";
-    if(prev)prev.style.opacity="1";if(ta)ta.style.opacity="1";
-  }else{
-    btn.textContent="⛔ ВЫКЛ";btn.style.background="var(--bd)";btn.style.color="var(--t2)";
-    st.textContent="⛔ Отключена";st.style.color="#f55";
-    if(prev)prev.style.opacity=".4";if(ta)ta.style.opacity=".4";
+  var txt=document.getElementById("instrTxt");
+  var st=document.getElementById("instrStatus");
+  // Deactivate all
+  var btns=document.querySelectorAll(".slotbtn");for(var i=0;i<btns.length;i++)btns[i].classList.remove("active");
+
+  if(id==="milean"){
+    instrOn=true;activeSlot="milean";
+    txt.value=MILEAN_INSTR;prev.textContent=MILEAN_INSTR;
+    st.textContent="⚖️ MILEAN";st.style.color="var(--ac)";
+    document.getElementById("slot_milean").classList.add("active");
+  } else if(id==="empty"){
+    instrOn=false;activeSlot="empty";
+    txt.value="";prev.textContent="(инструкция отключена — поле пустое)";
+    st.textContent="⛔ Пусто";st.style.color="var(--t2)";
+    document.getElementById("slot_clear").classList.add("active");
+  } else {
+    var slots=getSlots();
+    var data=slots["s"+id];
+    instrOn=true;activeSlot=id;
+    if(data&&data.text){
+      txt.value=data.text;prev.textContent=data.text;
+      st.textContent="📌 Слот "+id+": "+data.name;st.style.color="var(--info)";
+    } else {
+      txt.value="";prev.textContent="(слот "+id+" пуст — нажмите Edit чтобы написать, затем ПКМ чтобы сохранить)";
+      st.textContent="📌 Слот "+id+" (пуст)";st.style.color="var(--t2)";
+      instrOn=false;
+    }
+    document.getElementById("slot_"+id).classList.add("active");
+  }
+  saveCurrentState();
+}
+
+function saveSlot(id){
+  var txt=document.getElementById("instrTxt").value.trim();
+  if(!txt){alert("Инструкция пуста — нечего сохранять");return}
+  var name=prompt("Название для слота "+id+":",txt.substring(0,30)+"...");
+  if(name===null)return;
+  if(!name.trim()) name="Слот "+id;
+  var slots=getSlots();
+  slots["s"+id]={name:name.trim(),text:txt};
+  setSlots(slots);
+  var btn=document.getElementById("slot_"+id);
+  btn.textContent=name.trim().substring(0,8);
+  btn.classList.add("saved");
+  // Activate this slot
+  loadSlot(id);
+}
+
+function initSlotButtons(){
+  var slots=getSlots();
+  for(var i=1;i<=10;i++){
+    var data=slots["s"+i];
+    var btn=document.getElementById("slot_"+i);
+    if(data&&data.name){
+      btn.textContent=data.name.substring(0,8);
+      btn.classList.add("saved");
+    }
   }
 }
+
 function toggleWeb(lbl){
   if(!webMode){
     var pk=document.getElementById("pplxKey").value.trim();
@@ -1234,7 +1305,7 @@ if(ap){
   document.getElementById("instrTxt").value=ap.instr||"";
   if(ap.chatHTML) document.getElementById("msgs").innerHTML=ap.chatHTML;
 }
-renderProjects();render();localStats();updateProjectLabel();
+renderProjects();render();localStats();updateProjectLabel();initSlotButtons();
 // Think always ON on load
 (function(){var tt=document.getElementById("thinkToggle");if(tt){var tr=tt.querySelector(".tswitch-track");if(tr)tr.classList.add("on")}})();
 document.getElementById("instrTxt").addEventListener("input",updDot);
