@@ -775,6 +775,53 @@ function localStats(){
 // === PROJECT MANAGEMENT ===
 var projects=[], activeProjectId=null;
 function genId(){return Date.now().toString(36)+Math.random().toString(36).substr(2,5)}
+function genToken(){
+  var chars="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  var t="ML-";
+  for(var i=0;i<8;i++) t+=chars.charAt(Math.floor(Math.random()*chars.length));
+  return t;
+}
+function syncToTelegram(projId){
+  var p=projects.find(function(x){return x.id===projId});
+  if(!p){alert("Проект не найден");return}
+  if(!p.token) p.token=genToken();
+  saveProjects();
+  var btn=document.getElementById("syncBtn_"+projId);
+  if(btn){btn.textContent="⏳ Sync...";btn.disabled=true}
+  // Get chunks from IndexedDB
+  var enabledIds=(p.files||[]).filter(function(f){return f.enabled!==false}).map(function(f){return f.id});
+  dbGetChunks(projId,enabledIds).then(function(chunks){
+    var payload={
+      token:p.token,
+      name:p.name,
+      instr:p.instr||"",
+      files:(p.files||[]).map(function(f){return{name:f.name,chunks:f.chunks||0,chars:f.chars||0}}),
+      chunks:chunks.slice(0,500).map(function(c){return{text:c.text,file:c.fileName||""}}),
+      hist:(p.hist||[]).slice(-20)
+    };
+    return fetch("/api/sync",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+  }).then(function(r){return r.json()}).then(function(data){
+    if(data.ok){
+      if(btn){btn.textContent="✅";setTimeout(function(){btn.textContent="📤";btn.disabled=false},2000)}
+      // Show token dialog
+      var modal=document.createElement("div");
+      modal.style.cssText="position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center";
+      modal.innerHTML='<div style="background:var(--s);border:1px solid var(--bd);border-radius:12px;padding:24px;max-width:360px;text-align:center">'+
+        '<h3 style="font-family:Syne,sans-serif;font-size:16px;margin-bottom:12px;color:var(--t)">📤 Проект синхронизирован!</h3>'+
+        '<p style="font-size:11px;color:var(--t2);margin-bottom:16px">Введите этот токен в Telegram боте @milean_bot<br>командой <b>/connect '+p.token+'</b></p>'+
+        '<div style="background:var(--bg);border:2px solid var(--ac);border-radius:8px;padding:12px;font-family:Space Mono,monospace;font-size:20px;font-weight:700;color:var(--ac);letter-spacing:3px;margin-bottom:16px;cursor:pointer" onclick="navigator.clipboard.writeText(\''+p.token+'\');this.textContent=\'Скопировано! ✅\';var s=this;setTimeout(function(){s.textContent=\''+p.token+'\'},1500)">'+p.token+'</div>'+
+        '<p style="font-size:9px;color:var(--t2);margin-bottom:12px">Нажмите на токен чтобы скопировать</p>'+
+        '<button onclick="this.parentElement.parentElement.remove()" style="background:var(--ac);border:none;border-radius:6px;padding:8px 24px;color:var(--bg);font-family:Syne,sans-serif;font-weight:700;cursor:pointer">OK</button></div>';
+      document.body.appendChild(modal);
+    } else {
+      alert("Ошибка синхронизации: "+(data.error||"unknown"));
+      if(btn){btn.textContent="📤";btn.disabled=false}
+    }
+  }).catch(function(e){
+    alert("Ошибка: "+e.message);
+    if(btn){btn.textContent="📤";btn.disabled=false}
+  });
+}
 function loadProjects(){
   try{projects=JSON.parse(localStorage.getItem("milean_projects"))||[]}catch(e){projects=[]}
   activeProjectId=localStorage.getItem("milean_active_project")||null;
@@ -800,7 +847,8 @@ function createProject(name,silent){
   if(!name&&!silent){name=prompt("Название проекта:","Проект "+(projects.length+1));if(!name)return}
   if(!name)name="Новый проект";
   saveCurrentState();
-  var p={id:genId(),name:name,hist:[],files:[],instr:MILEAN_INSTR,chatHTML:"",created:Date.now()};
+  var token=genToken();
+  var p={id:genId(),name:name,hist:[],files:[],instr:MILEAN_INSTR,chatHTML:"",created:Date.now(),token:token};
   projects.push(p);
   activeProjectId=p.id;
   hist=[];files=[];
@@ -869,8 +917,10 @@ function renderProjects(){
     var mc=p.hist?Math.floor(p.hist.length/2):0;
     el.innerHTML='<span class="pj-icon">📁</span>'+
       '<div class="pj-info"><div class="pj-name" ondblclick="event.stopPropagation();renameProject(\''+p.id+'\')">'+p.name+'</div>'+
-      '<div class="pj-meta">📎 '+ec+'/'+fc+' файл. · 💬 '+mc+' сообщ.</div></div>'+
-      '<div style="display:flex;gap:2px;align-items:center"><button class="pj-ren" onclick="event.stopPropagation();renameProject(\''+p.id+'\')" title="Переименовать" style="background:none;border:none;color:var(--t2);cursor:pointer;font-size:13px;padding:2px 4px">✏️</button>'+
+      '<div class="pj-meta">📎 '+ec+'/'+fc+' файл. · 💬 '+mc+' сообщ.'+(p.token?' · 🔑 <span style="color:var(--info);cursor:pointer" onclick="event.stopPropagation();navigator.clipboard.writeText(\''+p.token+'\');this.textContent=\'✅\';var s=this;setTimeout(function(){s.textContent=\''+p.token+'\'},1500)" title="Скопировать токен">'+p.token+'</span>':'')+'</div></div>'+
+      '<div style="display:flex;gap:2px;align-items:center">'+
+      '<button id="syncBtn_'+p.id+'" onclick="event.stopPropagation();syncToTelegram(\''+p.id+'\')" title="Sync → Telegram" style="background:none;border:none;color:var(--info);cursor:pointer;font-size:13px;padding:2px 4px">📤</button>'+
+      '<button class="pj-ren" onclick="event.stopPropagation();renameProject(\''+p.id+'\')" title="Переименовать" style="background:none;border:none;color:var(--t2);cursor:pointer;font-size:13px;padding:2px 4px">✏️</button>'+
       '<button class="pj-del" onclick="event.stopPropagation();deleteProject(\''+p.id+'\')" title="Удалить">✕</button></div>';
     list.appendChild(el);
   }

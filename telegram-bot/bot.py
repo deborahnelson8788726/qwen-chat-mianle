@@ -32,6 +32,7 @@ NVIDIA_KEY = "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
 MODEL = "qwen/qwen3.5-397b-a17b"
 MAX_HISTORY = 10
 MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB
+SYNC_API = "https://milean.vercel.app/api/sync"
 CHUNK_SIZE = 500
 RAG_TOP_K = 8
 
@@ -277,6 +278,8 @@ async def cmd_help(msg: Message):
         "🗑 /clearinstr — очистить инструкцию\n\n"
         "📎 /files — список загруженных файлов\n"
         "🗑 /clearfiles — удалить все файлы\n\n"
+        "🔗 /connect <i>TOKEN</i> — подключить проект с web\n"
+        "🔑 /token — как получить токен\n\n"
         "🌐 /web — вкл/выкл веб-поиск\n"
         "🧠 /think — вкл/выкл режим Think\n"
         "🔄 /clear — очистить историю чата\n"
@@ -475,6 +478,97 @@ async def cmd_settings(msg: Message):
 async def cmd_cancel(msg: Message, state: FSMContext):
     await state.clear()
     await msg.answer("❌ Отменено")
+
+
+@router.message(Command("connect"))
+async def cmd_connect(msg: Message):
+    u = get_user(msg.from_user.id)
+    parts = (msg.text or "").split()
+    if len(parts) < 2:
+        await msg.answer(
+            "🔗 <b>Подключение проекта с Web</b>\n\n"
+            "Использование: <code>/connect ML-XXXXXXXX</code>\n\n"
+            "Как получить токен:\n"
+            "1. Откройте milean.vercel.app\n"
+            "2. В разделе «Проекты» нажмите 📤 рядом с проектом\n"
+            "3. Скопируйте токен и вставьте сюда",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    token = parts[1].strip().upper()
+    status_msg = await msg.answer(f"🔗 Подключение проекта <code>{token}</code>...", parse_mode=ParseMode.HTML)
+
+    try:
+        ssl_ctx = ssl.create_default_context()
+        ssl_ctx.check_hostname = False
+        ssl_ctx.verify_mode = ssl.CERT_NONE
+
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"{SYNC_API}?token={token}",
+                ssl=ssl_ctx,
+                timeout=aiohttp.ClientTimeout(total=30)
+            ) as resp:
+                data = await resp.json()
+
+        if not data.get("ok"):
+            await status_msg.edit_text(
+                f"❌ Проект не найден.\n\n"
+                f"Убедитесь что:\n"
+                f"• Токен верный: <code>{token}</code>\n"
+                f"• Вы нажали 📤 Sync на web-сайте\n"
+                f"• Прошло менее 24 часов с синхронизации",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        # Load project data
+        u["instr"] = data.get("instr", "")
+        u["active_slot"] = "web_project"
+        u["chunks"] = data.get("chunks", [])
+        u["files"] = data.get("files", [])
+        u["hist"] = data.get("hist", [])
+
+        proj_name = data.get("name", "Web Project")
+        files_count = len(u["files"])
+        chunks_count = len(u["chunks"])
+        hist_count = len(u["hist"]) // 2
+
+        await status_msg.edit_text(
+            f"✅ <b>Проект подключён!</b>\n\n"
+            f"📂 <b>{proj_name}</b>\n"
+            f"📎 Файлов: {files_count}\n"
+            f"🧩 Чанков: {chunks_count}\n"
+            f"💬 Сообщений: {hist_count}\n"
+            f"📝 Инструкция: {'✅ загружена' if u['instr'] else '❌ нет'}\n\n"
+            f"🔑 Токен: <code>{token}</code>\n\n"
+            f"Теперь просто отправьте вопрос — я отвечу с учётом "
+            f"файлов и инструкций из вашего web-проекта!",
+            parse_mode=ParseMode.HTML,
+            reply_markup=get_main_keyboard(u)
+        )
+
+    except Exception as e:
+        log.error(f"Connect error: {e}")
+        await status_msg.edit_text(f"❌ Ошибка подключения: {e}")
+
+
+@router.message(Command("token"))
+async def cmd_token(msg: Message):
+    """Show info about how to get token"""
+    await msg.answer(
+        "🔑 <b>Токен проекта</b>\n\n"
+        "Каждый проект на milean.vercel.app имеет уникальный токен "
+        "формата <code>ML-XXXXXXXX</code>\n\n"
+        "📤 Чтобы перенести проект в Telegram:\n"
+        "1. Откройте <b>Проекты</b> на сайте\n"
+        "2. Нажмите 📤 рядом с нужным проектом\n"
+        "3. Скопируйте токен\n"
+        "4. Отправьте <code>/connect ML-XXXXXXXX</code>\n\n"
+        "⚡️ Синхронизируются: инструкция, файлы, история чата",
+        parse_mode=ParseMode.HTML
+    )
 
 
 # ─── FILE HANDLER ───
@@ -733,6 +827,8 @@ async def set_commands():
         BotCommand(command="think", description="🧠 Вкл/выкл Think"),
         BotCommand(command="files", description="📎 Список файлов"),
         BotCommand(command="clear", description="🔄 Очистить историю"),
+        BotCommand(command="connect", description="🔗 Подключить проект с web"),
+        BotCommand(command="token", description="🔑 Как получить токен"),
         BotCommand(command="settings", description="⚙️ Настройки"),
     ]
     await bot.set_my_commands(commands)
