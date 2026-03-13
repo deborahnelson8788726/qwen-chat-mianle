@@ -4,6 +4,7 @@ from html.parser import HTMLParser
 from io import BytesIO
 import ipaddress
 import json
+import os
 import re
 import socket
 import ssl
@@ -21,6 +22,11 @@ MAX_URLS = 3
 MAX_BODY_BYTES = 900_000
 MAX_TEXT_CHARS = 9_000
 TIMEOUT = 15
+BROWSERLESS_TIMEOUT = 20
+try:
+    BROWSERLESS_TIMEOUT = max(5, min(60, int(os.getenv("BROWSERLESS_TIMEOUT", "20"))))
+except Exception:
+    BROWSERLESS_TIMEOUT = 20
 
 
 class _HtmlTextExtractor(HTMLParser):
@@ -155,12 +161,97 @@ def _extract_plain(raw: bytes, ct: str):
     return "", _normalize_space(text)
 
 
-def _fetch_one(url: str):
+def _validate_target_url(url: str):
     parsed = urllib.parse.urlparse(url)
     if parsed.scheme not in ("http", "https"):
         raise ValueError("unsupported scheme")
     if not _host_is_public(parsed.hostname or ""):
         raise ValueError("host is not allowed")
+    return parsed
+
+
+def _browserless_endpoint() -> str:
+    endpoint = os.getenv("BROWSERLESS_CONTENT_URL", "").strip()
+    token = os.getenv("BROWSERLESS_TOKEN", "").strip()
+    if not endpoint:
+        return ""
+    try:
+        ep = urllib.parse.urlsplit(endpoint)
+        if ep.scheme not in ("http", "https"):
+            return ""
+    except Exception:
+        return ""
+
+    if token:
+        if "{token}" in endpoint:
+            endpoint = endpoint.replace("{token}", urllib.parse.quote(token, safe=""))
+        elif "token=" not in endpoint:
+            ep = urllib.parse.urlsplit(endpoint)
+            q = urllib.parse.parse_qsl(ep.query, keep_blank_values=True)
+            q.append(("token", token))
+            endpoint = urllib.parse.urlunsplit(
+                (ep.scheme, ep.netloc, ep.path, urllib.parse.urlencode(q), ep.fragment)
+            )
+    return endpoint
+
+
+def _fetch_with_browserless(url: str):
+    endpoint = _browserless_endpoint()
+    if not endpoint:
+        raise ValueError("browserless is not configured")
+
+    payload = json.dumps({
+        "url": url,
+        "gotoOptions": {"waitUntil": "networkidle2"},
+        "timeout": BROWSERLESS_TIMEOUT * 1000,
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        endpoint,
+        data=payload,
+        headers={
+            "Content-Type": "application/json",
+            "Accept": "text/html, application/json;q=0.9, */*;q=0.5",
+            "User-Agent": "MileanFetch/1.0",
+        },
+        method="POST",
+    )
+    resp = urllib.request.urlopen(req, timeout=BROWSERLESS_TIMEOUT, context=SSL_CTX)
+    ct = (resp.headers.get("Content-Type") or "").lower()
+    raw = resp.read(MAX_BODY_BYTES + 1)
+    if len(raw) > MAX_BODY_BYTES:
+        raw = raw[:MAX_BODY_BYTES]
+
+    html = ""
+    if "application/json" in ct:
+        try:
+            data = json.loads(raw.decode("utf-8", errors="replace"))
+            html = (
+                (data.get("html") if isinstance(data, dict) else "")
+                or (data.get("content") if isinstance(data, dict) else "")
+                or (data.get("data") if isinstance(data, dict) else "")
+                or ""
+            )
+        except Exception:
+            html = ""
+    else:
+        html = raw.decode("utf-8", errors="replace")
+
+    title, text = _extract_html(html.encode("utf-8", errors="replace"), "text/html; charset=utf-8")
+    text = text[:MAX_TEXT_CHARS].strip()
+    if not text:
+        raise ValueError("browserless returned empty content")
+
+    return {
+        "url": url,
+        "title": title,
+        "content_type": "text/html; rendered=browserless",
+        "chars": len(text),
+        "content": text,
+    }
+
+
+def _fetch_one(url: str):
+    parsed = _validate_target_url(url)
 
     req = urllib.request.Request(
         url,
@@ -171,6 +262,8 @@ def _fetch_one(url: str):
         method="GET",
     )
     resp = urllib.request.urlopen(req, timeout=TIMEOUT, context=SSL_CTX)
+    final_url = resp.geturl() or url
+    _validate_target_url(final_url)
     ct = (resp.headers.get("Content-Type") or "").lower()
     raw = resp.read(MAX_BODY_BYTES + 1)
     if len(raw) > MAX_BODY_BYTES:
@@ -199,6 +292,21 @@ def _fetch_one(url: str):
         "chars": len(text),
         "content": text,
     }
+
+
+def _should_try_browserless(err) -> bool:
+    if not _browserless_endpoint():
+        return False
+    if isinstance(err, urllib.error.HTTPError):
+        return err.code in (401, 403, 404, 406, 409, 410, 429, 451, 500, 502, 503, 504)
+    if isinstance(err, urllib.error.URLError):
+        return True
+    if isinstance(err, (TimeoutError, socket.timeout)):
+        return True
+    msg = str(err).lower()
+    if "host is not allowed" in msg or "unsupported scheme" in msg:
+        return False
+    return "empty" in msg or "unsupported" in msg or "decode" in msg
 
 
 class handler(BaseHTTPRequestHandler):
@@ -244,12 +352,40 @@ class handler(BaseHTTPRequestHandler):
             try:
                 pages.append(_fetch_one(u))
             except urllib.error.HTTPError as e:
+                if _should_try_browserless(e):
+                    try:
+                        pages.append(_fetch_with_browserless(u))
+                        continue
+                    except Exception as b_err:
+                        failed.append({"url": u, "error": f"http {e.code}; browserless: {b_err}"})
+                        continue
                 failed.append({"url": u, "error": f"http {e.code}"})
             except urllib.error.URLError as e:
+                if _should_try_browserless(e):
+                    try:
+                        pages.append(_fetch_with_browserless(u))
+                        continue
+                    except Exception as b_err:
+                        failed.append({"url": u, "error": f"{e.reason}; browserless: {b_err}"})
+                        continue
                 failed.append({"url": u, "error": str(e.reason)})
             except (TimeoutError, socket.timeout):
+                if _should_try_browserless(TimeoutError()):
+                    try:
+                        pages.append(_fetch_with_browserless(u))
+                        continue
+                    except Exception as b_err:
+                        failed.append({"url": u, "error": f"timeout; browserless: {b_err}"})
+                        continue
                 failed.append({"url": u, "error": "timeout"})
             except Exception as e:
+                if _should_try_browserless(e):
+                    try:
+                        pages.append(_fetch_with_browserless(u))
+                        continue
+                    except Exception as b_err:
+                        failed.append({"url": u, "error": f"{e}; browserless: {b_err}"})
+                        continue
                 failed.append({"url": u, "error": str(e)})
 
         self._json(200, {"pages": pages, "failed": failed})
