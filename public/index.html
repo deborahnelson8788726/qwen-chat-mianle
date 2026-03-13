@@ -1451,7 +1451,47 @@ function send(){
   }
 
   function doWebThenSend(parts,query){
-    var searches=[];
+    var searches=[],citations=[],seenCitations={};
+    function addCitations(arr){
+      if(!arr||!arr.length)return;
+      for(var i=0;i<arr.length;i++){
+        var u=(arr[i]||"").trim();
+        if(!u||seenCitations[u])continue;
+        seenCitations[u]=true;
+        citations.push(u);
+      }
+    }
+    function fetchPagesThenSend(){
+      var urls=[];
+      for(var i=0;i<citations.length;i++){
+        var u=citations[i];
+        if(/^https?:\/\//i.test(u))urls.push(u);
+      }
+      urls=urls.slice(0,3);
+      if(!urls.length) return doSend(parts);
+
+      showStatus("📄 Чтение страниц...");
+      fetch("/api/fetch",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({urls:urls})
+      }).then(function(r){return r.json()}).then(function(data){
+        if(data&&data.pages&&data.pages.length){
+          var pageCtx="КОНТЕКСТ ИЗ ПОЛНОГО ТЕКСТА ВЕБ-СТРАНИЦ:\n\n"+data.pages.map(function(p,i){
+            var ttl=(p.title||"").trim();
+            var head=ttl?ttl:p.url;
+            return "["+(i+1)+"] "+head+"\nURL: "+p.url+"\n"+(p.content||"");
+          }).join("\n\n---\n\n");
+          parts.push(pageCtx);
+          console.log("Fetched pages:",data.pages.length);
+        }
+        if(data&&data.failed&&data.failed.length){
+          console.warn("Page fetch failed:",data.failed);
+        }
+      }).catch(function(e){
+        console.error("Page fetch error:",e);
+      }).then(function(){
+        doSend(parts);
+      });
+    }
     // Perplexity
     if(webMode){
       var pplxKey=document.getElementById("pplxKey").value.trim();
@@ -1464,6 +1504,7 @@ function send(){
               var webCtx="РЕЗУЛЬТАТЫ ВЕБ-ПОИСКА (Perplexity):\n"+data.content;
               if(data.citations&&data.citations.length){
                 webCtx+="\n\nИсточники:\n"+data.citations.map(function(u,i){return "["+(i+1)+"] "+u}).join("\n");
+                addCitations(data.citations);
               }
               parts.push(webCtx);
               console.log("Perplexity search added");
@@ -1482,6 +1523,7 @@ function send(){
             var ddgCtx="РЕЗУЛЬТАТЫ ВЕБ-ПОИСКА (DuckDuckGo):\n"+data.content;
             if(data.citations&&data.citations.length){
               ddgCtx+="\n\nСсылки:\n"+data.citations.map(function(u,i){return "["+(i+1)+"] "+u}).join("\n");
+              addCitations(data.citations);
             }
             parts.push(ddgCtx);
             console.log("DDG search added, results:",data.citations?data.citations.length:0);
@@ -1491,7 +1533,7 @@ function send(){
     }
     if(!searches.length) return doSend(parts);
     showStatus("🌐 Поиск в интернете...");
-    Promise.all(searches).then(function(){doSend(parts)}).catch(function(){doSend(parts)});
+    Promise.all(searches).then(fetchPagesThenSend).catch(fetchPagesThenSend);
   }
 }
 
