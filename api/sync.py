@@ -1,29 +1,79 @@
 """Project sync API — bridge between Web and Telegram bot.
 POST /api/sync — store project data by token
 GET /api/sync?token=XXX — retrieve project data by token
+
+Uses /tmp for persistence across serverless invocations (same instance).
+Also keeps in-memory cache for speed.
 """
 from http.server import BaseHTTPRequestHandler
 import json
+import os
 import urllib.parse
 import time
 
-# In-memory store (persists within serverless instance warm period)
-_store = {}
-_MAX_AGE = 86400  # 24 hours
-_MAX_STORE = 200  # max projects in memory
+SYNC_DIR = "/tmp/milean_sync"
+_cache = {}
+_MAX_AGE = 86400 * 3  # 3 days
+
+
+def _ensure_dir():
+    os.makedirs(SYNC_DIR, exist_ok=True)
+
+
+def _token_path(token):
+    safe = token.replace("/", "_").replace("\\", "_")
+    return os.path.join(SYNC_DIR, f"{safe}.json")
+
+
+def _save(token, data):
+    _ensure_dir()
+    data["ts"] = time.time()
+    path = _token_path(token)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False)
+    _cache[token] = data
+
+
+def _load(token):
+    # Try cache first
+    if token in _cache:
+        d = _cache[token]
+        if time.time() - d.get("ts", 0) < _MAX_AGE:
+            return d
+        else:
+            del _cache[token]
+
+    # Try file
+    path = _token_path(token)
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                d = json.load(f)
+            if time.time() - d.get("ts", 0) < _MAX_AGE:
+                _cache[token] = d
+                return d
+            else:
+                os.remove(path)
+        except:
+            pass
+    return None
 
 
 def _cleanup():
-    """Remove expired entries"""
+    _ensure_dir()
     now = time.time()
-    expired = [k for k, v in _store.items() if now - v.get("ts", 0) > _MAX_AGE]
-    for k in expired:
-        del _store[k]
-    # If still too many, remove oldest
-    if len(_store) > _MAX_STORE:
-        items = sorted(_store.items(), key=lambda x: x[1].get("ts", 0))
-        for k, _ in items[:len(items) - _MAX_STORE]:
-            del _store[k]
+    try:
+        for fn in os.listdir(SYNC_DIR):
+            fp = os.path.join(SYNC_DIR, fn)
+            try:
+                with open(fp, "r") as f:
+                    d = json.load(f)
+                if now - d.get("ts", 0) > _MAX_AGE:
+                    os.remove(fp)
+            except:
+                pass
+    except:
+        pass
 
 
 class handler(BaseHTTPRequestHandler):
@@ -46,18 +96,19 @@ class handler(BaseHTTPRequestHandler):
             self._json(400, {"error": "Invalid token"})
             return
 
-        _cleanup()
-
-        _store[token] = {
+        data = {
             "ts": time.time(),
             "name": d.get("name", "Project"),
             "instr": d.get("instr", ""),
-            "files": d.get("files", []),  # [{name, chunks, chars}]
-            "chunks": d.get("chunks", []),  # [{text, file}]
+            "files": d.get("files", []),
+            "chunks": d.get("chunks", []),
             "hist": d.get("hist", []),
         }
 
-        self._json(200, {"ok": True, "token": token, "stored": len(_store)})
+        _save(token, data)
+        _cleanup()
+
+        self._json(200, {"ok": True, "token": token})
 
     def do_GET(self):
         qs = urllib.parse.urlparse(self.path).query
@@ -68,7 +119,7 @@ class handler(BaseHTTPRequestHandler):
             self._json(400, {"error": "No token"})
             return
 
-        data = _store.get(token)
+        data = _load(token)
         if not data:
             self._json(404, {"error": "Project not found or expired"})
             return
