@@ -41,8 +41,6 @@ select.hbtn option{background:var(--s);color:var(--t)}
 #keybar label{font-size:10px;font-family:'Space Mono',monospace;color:var(--ac);text-transform:uppercase;letter-spacing:.1em}
 #apiKey{flex:1;background:var(--s);border:1px solid var(--bd);border-radius:6px;color:var(--t2);font-family:'Space Mono',monospace;font-size:11px;padding:5px 10px;outline:none}
 
-#instrBar{display:none;flex-direction:column;gap:6px;padding:8px 12px;background:rgba(118,185,0,.03);border-bottom:1px solid var(--bd);flex-shrink:0}
-#instrBar.open{display:flex}
 #instrTxt{min-height:40px;max-height:120px;font-size:12px}
 .ihead{display:flex;align-items:center;justify-content:space-between}
 .ihead label{font-size:10px;font-family:'Space Mono',monospace;color:var(--ac);text-transform:uppercase}
@@ -266,48 +264,39 @@ body.light .sdot{background:var(--ac);box-shadow:0 0 6px var(--ac)}
 <button class="close-side" onclick="toggleSidebar()">✕</button>
 </div>
 <div class="side-nav">
-<button class="hbtn on" style="width:100%" id="ibtn" onclick="togInstr()">⚖️ MILEAN Инструкция <span class="dot v" id="idot"></span></button>
-<button class="hbtn" style="width:100%" id="pjbtn" onclick="togProj()">📂 Проекты</button>
-<button class="hbtn" style="width:100%" id="fbtn" onclick="togFiles()">📁 Файлы <span class="badge" id="fbadge">0</span></button>
-<select id="mdlSel" class="hbtn" style="width:100%" onchange="MDL=this.value;document.getElementById('mdlLabel').textContent=this.value.split('/')[1]">
+<button class="hbtn on" style="width:100%" id="pjbtn" onclick="openProjectsPanel()">📂 Проекты</button>
+<button class="hbtn" style="width:100%" id="fbtn" onclick="openFilesPanel()">📁 Файлы <span class="badge" id="fbadge">0</span></button>
+</div>
+<div id="projPanel" class="open">
+<div class="pj-head"><h3>📂 Проекты</h3><button class="pj-add" onclick="createProject()" title="Новый проект">+</button></div>
+<div class="pj-list" id="pjList"><div class="pj-empty">Нет проектов</div></div>
+<div style="border-top:1px solid var(--bd);padding:10px 12px;display:flex;flex-direction:column;gap:8px">
+<div style="font-size:10px;font-family:'Space Mono',monospace;color:var(--ac);text-transform:uppercase;letter-spacing:.06em">⚙️ Настройки: <span id="projCfgName">Проект</span></div>
+<select id="mdlSel" class="hbtn" style="width:100%" onchange="setProjectModel(this.value)">
 <option value="qwen/qwen3.5-397b-a17b" selected>Qwen 3.5 397B</option>
 <option value="qwen/qwen2.5-coder-32b-instruct">Qwen 2.5 Coder 32B</option>
 <option value="qwen/qwen2.5-7b-instruct">Qwen 2.5 7B</option>
 <option value="qwen/qwen3.5-122b-a10b">Qwen 3.5 122B</option>
 <option value="qwen/qwq-32b">QwQ 32B</option>
 </select>
-<label onclick="txtMode=!txtMode;this.querySelector('.ftog').classList.toggle('on',txtMode)" style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:10px;font-family:'Space Mono',monospace;color:var(--t2);padding:4px 0"><span class="ftog" id="txtTog">✓</span> TXT</label>
-<label onclick="docMode=!docMode;this.querySelector('.ftog').classList.toggle('on',docMode)" style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:10px;font-family:'Space Mono',monospace;color:var(--t2);padding:4px 0"><span class="ftog" id="docTog">✓</span> 📄 DOCX + PDF</label>
-<label onclick="toggleWeb(this)" style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:10px;font-family:'Space Mono',monospace;color:var(--t2);padding:4px 0"><span class="ftog" id="webTog">✓</span> 🌐 Perplexity</label>
-<label onclick="ddgMode=!ddgMode;this.querySelector('.ftog').classList.toggle('on',ddgMode);localStorage.setItem('milean_ddg',ddgMode?'1':'0')" style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:10px;font-family:'Space Mono',monospace;color:var(--t2);padding:4px 0"><span class="ftog" id="ddgTog">✓</span> 🦆 DuckDuckGo</label>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+<label onclick="toggleProjectSetting('txtMode')" style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:10px;font-family:'Space Mono',monospace;color:var(--t2);padding:2px 0"><span class="ftog" id="cfgTxtTog">✓</span> TXT</label>
+<label onclick="toggleProjectSetting('docMode')" style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:10px;font-family:'Space Mono',monospace;color:var(--t2);padding:2px 0"><span class="ftog" id="cfgDocTog">✓</span> 📄 DOCX + PDF</label>
+<label onclick="toggleProjectWeb()" style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:10px;font-family:'Space Mono',monospace;color:var(--t2);padding:2px 0"><span class="ftog" id="cfgWebTog">✓</span> 🌐 Perplexity</label>
+<label onclick="toggleProjectSetting('ddgMode')" style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:10px;font-family:'Space Mono',monospace;color:var(--t2);padding:2px 0"><span class="ftog" id="cfgDdgTog">✓</span> 🦆 DuckDuckGo</label>
+<label onclick="toggleProjectSetting('thinkOn')" style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:10px;font-family:'Space Mono',monospace;color:var(--t2);padding:2px 0"><span class="ftog" id="cfgThinkTog">✓</span> 💡 Think</label>
+<label onclick="toggleProjectSetting('instrOn')" style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:10px;font-family:'Space Mono',monospace;color:var(--t2);padding:2px 0"><span class="ftog" id="cfgInstrTog">✓</span> ⚖️ Инструкция</label>
 </div>
-<div id="instrBar">
-<div class="ihead"><label>⚖️ Инструкция</label><div style="display:flex;gap:6px"><button id="instrEditBtn" onclick="toggleInstrEdit()" style="background:var(--s2);border:1px solid var(--bd);border-radius:5px;padding:2px 10px;font-size:10px;font-family:'Space Mono',monospace;color:var(--t2);cursor:pointer">✏️ Edit</button><button id="instrResetBtn" onclick="resetInstr()" style="background:var(--s2);border:1px solid var(--bd);border-radius:5px;padding:2px 10px;font-size:10px;font-family:'Space Mono',monospace;color:var(--t2);cursor:pointer;display:none">↩ Reset</button><button onclick="togInstr()" style="background:none;border:none;color:var(--t2);cursor:pointer;font-size:16px">✕</button></div></div>
-<div id="instrSlots" style="padding:4px 12px 6px;display:flex;flex-wrap:wrap;gap:4px;border-bottom:1px solid var(--bd)">
-<button class="slotbtn active" id="slot_milean" onclick="loadSlot('milean')">⚖️ MILEAN</button>
-<button class="slotbtn" id="slot_1" onclick="loadSlot(1)" oncontextmenu="event.preventDefault();saveSlot(1)">1</button>
-<button class="slotbtn" id="slot_2" onclick="loadSlot(2)" oncontextmenu="event.preventDefault();saveSlot(2)">2</button>
-<button class="slotbtn" id="slot_3" onclick="loadSlot(3)" oncontextmenu="event.preventDefault();saveSlot(3)">3</button>
-<button class="slotbtn" id="slot_4" onclick="loadSlot(4)" oncontextmenu="event.preventDefault();saveSlot(4)">4</button>
-<button class="slotbtn" id="slot_5" onclick="loadSlot(5)" oncontextmenu="event.preventDefault();saveSlot(5)">5</button>
-<button class="slotbtn" id="slot_6" onclick="loadSlot(6)" oncontextmenu="event.preventDefault();saveSlot(6)">6</button>
-<button class="slotbtn" id="slot_7" onclick="loadSlot(7)" oncontextmenu="event.preventDefault();saveSlot(7)">7</button>
-<button class="slotbtn" id="slot_8" onclick="loadSlot(8)" oncontextmenu="event.preventDefault();saveSlot(8)">8</button>
-<button class="slotbtn" id="slot_9" onclick="loadSlot(9)" oncontextmenu="event.preventDefault();saveSlot(9)">9</button>
-<button class="slotbtn" id="slot_10" onclick="loadSlot(10)" oncontextmenu="event.preventDefault();saveSlot(10)">10</button>
-<button class="slotbtn" style="background:transparent;border-style:dashed;color:var(--t2)" id="slot_clear" onclick="loadSlot('empty')">✕ Пусто</button>
+<textarea id="instrTxt" style="background:var(--s);border:1px solid var(--bd);border-radius:7px;color:var(--t);font-family:'Syne',sans-serif;font-size:12px;padding:10px 12px;outline:none;resize:vertical;min-height:120px;max-height:220px;line-height:1.5;width:100%" placeholder="Инструкция проекта"></textarea>
+<div style="display:flex;align-items:center;gap:6px">
+<button class="hbtn on" style="font-size:10px;padding:5px 8px" onclick="saveProjectInstruction()">💾 Сохранить</button>
+<button class="hbtn" style="font-size:10px;padding:5px 8px" onclick="resetProjectInstruction()">↩ MILEAN</button>
 </div>
-<div id="slotHint" style="padding:3px 12px;font-size:8px;font-family:'Space Mono',monospace;color:var(--t2);border-bottom:1px solid var(--bd)">ЛКМ = загрузить · ПКМ = сохранить текущую инструкцию в слот</div>
-<div id="instrPreview" style="background:var(--s);border:1px solid var(--bd);border-radius:7px;color:var(--t2);font-size:11px;padding:10px 12px;line-height:1.6;max-height:300px;overflow-y:auto;white-space:pre-wrap;word-break:break-word"></div>
-<textarea id="instrTxt" style="display:none;background:var(--s);border:1px solid var(--ac);border-radius:7px;color:var(--t);font-family:'Syne',sans-serif;font-size:12px;padding:10px 12px;outline:none;resize:vertical;min-height:200px;max-height:400px;line-height:1.5;width:100%" oninput="updDot()"></textarea>
-<div class="ifoot"><span id="instrStatus" style="color:var(--ac)">⚖️ MILEAN</span><span style="font-size:9px;font-family:'Space Mono',monospace;color:var(--t2)">Отправляется с каждым сообщением</span></div>
+<div id="instrStatus" style="font-size:9px;font-family:'Space Mono',monospace;color:var(--t2)">Инструкция сохранена</div>
 </div>
-<div id="projPanel">
-<div class="pj-head"><h3>📂 Проекты</h3><button class="pj-add" onclick="createProject()" title="Новый проект">+</button></div>
-<div class="pj-list" id="pjList"><div class="pj-empty">Нет проектов</div></div>
 </div>
 <div id="fpanel" style="border-right:none">
-<div class="phead"><h3>📁 База знаний</h3><button class="pclose" onclick="togFiles()">✕</button></div>
+<div class="phead"><h3>📁 База знаний</h3><button class="pclose" onclick="openProjectsPanel()">✕</button></div>
 <div style="padding:4px 16px 6px;font-size:10px;font-family:'Space Mono',monospace;color:var(--ac);border-bottom:1px solid var(--bd);display:flex;align-items:center;gap:5px">📂 <span id="fprojName">Проект</span></div>
 <div class="rstats"><div class="rstat"><div class="rsv" id="sf">0</div><div class="rsl">Файлов</div></div>
 <div class="rstat"><div class="rsv" id="sc">0</div><div class="rsl">Фрагм.</div></div>
@@ -367,7 +356,6 @@ body.light .sdot{background:var(--ac);box-shadow:0 0 6px var(--ac)}
 <div class="ibar-actions">
 <button id="attachBtn" onclick="document.getElementById('chatFi').click()" style="background:none;border:none;cursor:pointer;padding:4px;flex-shrink:0" title="Прикрепить файл"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8888a0" stroke-width="2" stroke-linecap="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg></button>
 <input type="file" id="chatFi" multiple hidden/>
-<div class="tswitch" id="thinkToggle" onclick="thinkOn=!thinkOn;var tr=this.querySelector('.tswitch-track');tr.classList.toggle('on',thinkOn)"><div class="tswitch-track"><div class="tswitch-thumb"></div></div><span class="tswitch-label">💡 Think</span></div>
 <span style="flex:1"></span>
 <button id="sbtn" onclick="send()"><svg width="16" height="16" viewBox="0 0 24 24"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg></button>
 </div>
@@ -477,97 +465,141 @@ window.addEventListener("unhandledrejection",function(e){
 });
 
 var API="/api/proxy",MDL="qwen/qwen3.5-397b-a17b";
-var hist=[],loading=false,files=[],ragSrc=[],allOn=true,thinkOn=true,txtMode=false,docMode=false,webMode=false,ddgMode=false,instrOn=true;
-// Restore web mode + pplx key
+var hist=[],loading=false,files=[],ragSrc=[],allOn=true,thinkOn=false,txtMode=false,docMode=false,webMode=false,ddgMode=false,instrOn=true;
+var instrDirty=false;
+
+function defaultProjectSettings(){
+  return {
+    instrOn:true,
+    thinkOn:false,
+    txtMode:false,
+    docMode:false,
+    webMode:false,
+    ddgMode:false,
+    model:"qwen/qwen3.5-397b-a17b"
+  };
+}
+
+// Restore shared keys only
 (function(){
-  if(localStorage.getItem("milean_web")==="1"){webMode=true;var wt=document.getElementById("webTog");if(wt)wt.classList.add("on")}
-  if(localStorage.getItem("milean_ddg")==="1"){ddgMode=true;var dt=document.getElementById("ddgTog");if(dt)dt.classList.add("on")}
   var sk=localStorage.getItem("milean_pplx");
   if(!sk){sk="pplx-9OzbY"+"g3TpVEMhK4RAJ49WVI"+"krqR1NufFsKNPu"+"oCenUc7xUMe";localStorage.setItem("milean_pplx",sk)}
   var el=document.getElementById("pplxKey");if(el)el.value=sk
 })();
-// === INSTRUCTION SLOTS ===
-var activeSlot="milean";
-function getSlots(){try{return JSON.parse(localStorage.getItem("milean_slots")||"{}")}catch(e){return{}}}
-function setSlots(s){localStorage.setItem("milean_slots",JSON.stringify(s))}
-
-function loadSlot(id){
-  if(instrEditing) saveInstrEdit();
-  var prev=document.getElementById("instrPreview");
-  var txt=document.getElementById("instrTxt");
+// === PROJECT SETTINGS UI ===
+function setInstrStatus(text,color){
   var st=document.getElementById("instrStatus");
-  // Deactivate all
-  var btns=document.querySelectorAll(".slotbtn");for(var i=0;i<btns.length;i++)btns[i].classList.remove("active");
+  if(!st)return;
+  st.textContent=text;
+  st.style.color=color||"var(--t2)";
+}
 
-  if(id==="milean"){
-    instrOn=true;activeSlot="milean";
-    txt.value=MILEAN_INSTR;prev.textContent=MILEAN_INSTR;
-    st.textContent="⚖️ MILEAN";st.style.color="var(--ac)";
-    document.getElementById("slot_milean").classList.add("active");
-  } else if(id==="empty"){
-    instrOn=false;activeSlot="empty";
-    txt.value="";prev.textContent="(инструкция отключена — поле пустое)";
-    st.textContent="⛔ Пусто";st.style.color="var(--t2)";
-    document.getElementById("slot_clear").classList.add("active");
-  } else {
-    var slots=getSlots();
-    var data=slots["s"+id];
-    instrOn=true;activeSlot=id;
-    if(data&&data.text){
-      txt.value=data.text;prev.textContent=data.text;
-      st.textContent="📌 Слот "+id+": "+data.name;st.style.color="var(--info)";
-    } else {
-      txt.value="";prev.textContent="(слот "+id+" пуст — нажмите Edit чтобы написать, затем ПКМ чтобы сохранить)";
-      st.textContent="📌 Слот "+id+" (пуст)";st.style.color="var(--t2)";
-      instrOn=false;
-    }
-    document.getElementById("slot_"+id).classList.add("active");
+function openProjectsPanel(){
+  var panel=document.getElementById("projPanel");
+  var fp=document.getElementById("fpanel");
+  panel.classList.add("open");
+  fp.classList.remove("open");
+  document.getElementById("pjbtn").classList.add("on");
+  document.getElementById("fbtn").classList.remove("on");
+}
+
+function openFilesPanel(){
+  var panel=document.getElementById("projPanel");
+  var fp=document.getElementById("fpanel");
+  fp.classList.add("open");
+  panel.classList.remove("open");
+  document.getElementById("fbtn").classList.add("on");
+  document.getElementById("pjbtn").classList.remove("on");
+}
+
+function togProj(){openProjectsPanel()}
+function togFiles(){openFilesPanel()}
+
+function applyProjectSettingsToRuntime(p){
+  if(!p)return;
+  var s=p.settings||defaultProjectSettings();
+  instrOn=!!s.instrOn;
+  thinkOn=!!s.thinkOn;
+  txtMode=!!s.txtMode;
+  docMode=!!s.docMode;
+  webMode=!!s.webMode;
+  ddgMode=!!s.ddgMode;
+  MDL=s.model||"qwen/qwen3.5-397b-a17b";
+}
+
+function refreshProjectSettingsUI(){
+  var p=getActiveProject();
+  if(!p)return;
+  var s=p.settings||defaultProjectSettings();
+  var map=[
+    ["cfgTxtTog",s.txtMode],
+    ["cfgDocTog",s.docMode],
+    ["cfgWebTog",s.webMode],
+    ["cfgDdgTog",s.ddgMode],
+    ["cfgThinkTog",s.thinkOn],
+    ["cfgInstrTog",s.instrOn]
+  ];
+  for(var i=0;i<map.length;i++){
+    var el=document.getElementById(map[i][0]);
+    if(el)el.classList.toggle("on",!!map[i][1]);
   }
+  var mdl=document.getElementById("mdlSel");
+  if(mdl&&s.model)mdl.value=s.model;
+  var il=document.getElementById("instrTxt");
+  if(il){
+    if(il.dataset.projectId!==p.id||!instrDirty){
+      il.value=p.instr||MILEAN_INSTR;
+      instrDirty=false;
+      il.dataset.projectId=p.id;
+    }
+    il.disabled=!s.instrOn;
+    il.style.opacity=s.instrOn?"1":"0.55";
+  }
+  var nm=document.getElementById("projCfgName");
+  if(nm)nm.textContent=p.name||"Проект";
+  if(instrDirty){
+    setInstrStatus("✏️ Есть несохранённые изменения","#ffb347");
+  }else{
+    setInstrStatus(s.instrOn?"Инструкция сохранена":"Инструкция отключена",s.instrOn?"var(--t2)":"#999");
+  }
+  document.getElementById("mdlLabel").textContent=(MDL.split("/")[1]||MDL);
+}
+
+function toggleProjectSetting(key){
+  var p=getActiveProject();if(!p)return;
+  p.settings=p.settings||defaultProjectSettings();
+  p.settings[key]=!p.settings[key];
+  applyProjectSettingsToRuntime(p);
+  refreshProjectSettingsUI();
   saveCurrentState();
 }
 
-function saveSlot(id){
-  var txt=document.getElementById("instrTxt").value.trim();
-  if(!txt){alert("Инструкция пуста — нечего сохранять");return}
-  var name=prompt("Название для слота "+id+":",txt.substring(0,30)+"...");
-  if(name===null)return;
-  if(!name.trim()) name="Слот "+id;
-  var slots=getSlots();
-  slots["s"+id]={name:name.trim(),text:txt};
-  setSlots(slots);
-  var btn=document.getElementById("slot_"+id);
-  btn.textContent=name.trim().substring(0,8);
-  btn.classList.add("saved");
-  // Activate this slot
-  loadSlot(id);
-}
-
-function initSlotButtons(){
-  var slots=getSlots();
-  for(var i=1;i<=10;i++){
-    var data=slots["s"+i];
-    var btn=document.getElementById("slot_"+i);
-    if(data&&data.name){
-      btn.textContent=data.name.substring(0,8);
-      btn.classList.add("saved");
-    }
-  }
-}
-
-function toggleWeb(lbl){
-  if(!webMode){
+function toggleProjectWeb(){
+  var p=getActiveProject();if(!p)return;
+  p.settings=p.settings||defaultProjectSettings();
+  if(!p.settings.webMode){
     var pk=document.getElementById("pplxKey").value.trim();
     if(!pk){
       pk=prompt("Введите Perplexity API ключ (pplx-...):");
-      if(!pk||!pk.trim()){return}
+      if(!pk||!pk.trim())return;
       pk=pk.trim();
       document.getElementById("pplxKey").value=pk;
       localStorage.setItem("milean_pplx",pk);
     }
   }
-  webMode=!webMode;
-  lbl.querySelector(".ftog").classList.toggle("on",webMode);
-  localStorage.setItem("milean_web",webMode?"1":"0");
+  p.settings.webMode=!p.settings.webMode;
+  applyProjectSettingsToRuntime(p);
+  refreshProjectSettingsUI();
+  saveCurrentState();
+}
+
+function setProjectModel(model){
+  var p=getActiveProject();if(!p)return;
+  p.settings=p.settings||defaultProjectSettings();
+  p.settings.model=model;
+  MDL=model;
+  document.getElementById("mdlLabel").textContent=(model.split("/")[1]||model);
+  saveCurrentState();
 }
 
 // Theme
@@ -824,20 +856,62 @@ function syncToTelegram(projId){
 }
 function loadProjects(){
   try{projects=JSON.parse(localStorage.getItem("milean_projects"))||[]}catch(e){projects=[]}
+  for(var i=0;i<projects.length;i++) normalizeProject(projects[i]);
   activeProjectId=localStorage.getItem("milean_active_project")||null;
-  if(!projects.length) createProject("Новый проект",true);
+  if(!projects.length){
+    var token=genToken();
+    projects=[normalizeProject({id:genId(),name:"Новый проект",hist:[],files:[],instr:MILEAN_INSTR,chatHTML:"",created:Date.now(),token:token})];
+  }
   if(!activeProjectId||!projects.find(function(p){return p.id===activeProjectId})) activeProjectId=projects[0].id;
+  saveProjects();
 }
 function saveProjects(){
   localStorage.setItem("milean_projects",JSON.stringify(projects));
   localStorage.setItem("milean_active_project",activeProjectId);
 }
 function getActiveProject(){return projects.find(function(p){return p.id===activeProjectId})||projects[0]}
+
+function normalizeProject(p){
+  var def=defaultProjectSettings();
+  if(!p.settings)p.settings={};
+  for(var k in def){
+    if(typeof p.settings[k]==="undefined")p.settings[k]=def[k];
+  }
+  if(typeof p.instr!=="string"||!p.instr)p.instr=MILEAN_INSTR;
+  if(!Array.isArray(p.hist))p.hist=[];
+  if(!Array.isArray(p.files))p.files=[];
+  if(typeof p.chatHTML!=="string")p.chatHTML="";
+  if(!p.token)p.token=genToken();
+  return p;
+}
+
+function applyProjectState(p){
+  if(!p)return;
+  normalizeProject(p);
+  hist=(p.hist||[]).slice();
+  files=(p.files||[]).slice();
+  var msgs=document.getElementById("msgs");
+  if(p.chatHTML){msgs.innerHTML=p.chatHTML}
+  else{msgs.innerHTML='<div id="welcome"><h2>Привет, я <span>MILEAN</span> твой агент</h2><p>Загрузите файлы — я проанализирую и помогу</p></div>'}
+  applyProjectSettingsToRuntime(p);
+  refreshProjectSettingsUI();
+  render();
+  localStats();
+  updateProjectLabel();
+}
+
 function saveCurrentState(){
   var p=getActiveProject();if(!p)return;
+  normalizeProject(p);
   p.hist=hist.slice();
   p.files=files.slice();
-  p.instr=document.getElementById("instrTxt").value;
+  p.settings.instrOn=!!instrOn;
+  p.settings.thinkOn=!!thinkOn;
+  p.settings.txtMode=!!txtMode;
+  p.settings.docMode=!!docMode;
+  p.settings.webMode=!!webMode;
+  p.settings.ddgMode=!!ddgMode;
+  p.settings.model=MDL;
   // Save chat HTML
   var msgs=document.getElementById("msgs");
   p.chatHTML=msgs.innerHTML;
@@ -848,53 +922,39 @@ function createProject(name,silent){
   if(!name)name="Новый проект";
   saveCurrentState();
   var token=genToken();
-  var p={id:genId(),name:name,hist:[],files:[],instr:MILEAN_INSTR,chatHTML:"",created:Date.now(),token:token};
+  var p=normalizeProject({id:genId(),name:name,hist:[],files:[],instr:MILEAN_INSTR,chatHTML:"",created:Date.now(),token:token,settings:defaultProjectSettings()});
   projects.push(p);
   activeProjectId=p.id;
-  hist=[];files=[];
-  document.getElementById("instrTxt").value=MILEAN_INSTR;
-  document.getElementById("instrPreview").textContent=MILEAN_INSTR;
-  document.getElementById("msgs").innerHTML='<div id="welcome"><h2>Привет, я <span>MILEAN</span> твой агент</h2><p>Загрузите файлы — я проанализирую и помогу</p></div>';
-  saveProjects();renderProjects();render();localStats();updDot();
-  updateProjectLabel();
+  saveProjects();
+  renderProjects();
+  applyProjectState(p);
+  openProjectsPanel();
 }
-function switchProject(id){
-  if(id===activeProjectId)return;
+function switchProject(id,force){
+  if(id===activeProjectId&&!force)return;
   saveCurrentState();
   activeProjectId=id;
   var p=getActiveProject();
-  hist=p.hist||[];
-  files=p.files||[];
-  var instr=p.instr||MILEAN_INSTR;
-  document.getElementById("instrTxt").value=instr;
-  document.getElementById("instrPreview").textContent=instr;
-  // Restore chat
-  var msgs=document.getElementById("msgs");
-  if(p.chatHTML){msgs.innerHTML=p.chatHTML}
-  else{msgs.innerHTML='<div id="welcome"><h2>Привет, я <span>MILEAN</span> твой агент</h2><p>Загрузите файлы — я проанализирую и помогу</p></div>'}
-  saveProjects();renderProjects();render();localStats();updDot();
-  updateProjectLabel();
+  applyProjectState(p);
+  saveProjects();
+  renderProjects();
 }
 function deleteProject(id){
   if(projects.length<=1){alert("Нельзя удалить единственный проект");return}
   if(!confirm("Удалить проект?"))return;
   dbDeleteProjectChunks(id).catch(function(e){console.error("DB cleanup error:",e)});
   projects=projects.filter(function(p){return p.id!==id});
-  if(activeProjectId===id){activeProjectId=projects[0].id;switchProject(activeProjectId)}
-  saveProjects();renderProjects();
+  if(activeProjectId===id){
+    activeProjectId=projects[0].id;
+    applyProjectState(getActiveProject());
+  }
+  saveProjects();
+  renderProjects();
 }
 function renameProject(id){
   var p=projects.find(function(x){return x.id===id});if(!p)return;
   var n=prompt("Новое название:",p.name);if(!n)return;
   p.name=n;saveProjects();renderProjects();updateProjectLabel();
-}
-function togProj(){
-  var panel=document.getElementById("projPanel");
-  var fp=document.getElementById("fpanel");
-  if(panel.classList.contains("open")){panel.classList.remove("open")}
-  else{panel.classList.add("open");fp.classList.remove("open")}
-  document.getElementById("pjbtn").classList.toggle("on",panel.classList.contains("open"));
-  document.getElementById("fbtn").classList.toggle("on",fp.classList.contains("open"));
 }
 function toggleSidebar(){
   var sb=document.getElementById("sidebar");
@@ -927,56 +987,24 @@ function renderProjects(){
 }
 var MILEAN_INSTR="Ты — высококлассный российский юрист и адвокат с практикой более 20 лет.\nСпециализация:\n— мошенничество с недвижимостью\n— подделка подписей и документов\n— злоупотребление доверенностями\n— отчуждение долей, ПДКП, ничтожные сделки\n— гражданские и уголовные дела (в т.ч. 159, 160, 327 УК РФ)\n\nТы работаешь в интересах Дмитрия Фёдорова.\n\n🎯 ЦЕЛЬ РАБОТЫ\nКомплексно разобрать все эпизоды дела (Прокопенко / Фузицкая / Расторгуева / Мараховский / Кукса и др.).\nВыявить и зафиксировать:\n• ничтожность и оспоримость сделок;\n• подделку подписей и использование факсимиле без полномочий;\n• злоупотребление доверенностями;\n• незаконное распоряжение денежными средствами.\n\nСформировать единый юридический нарратив, пригодный:\n• для судов всех инстанций;\n• для Следственного комитета;\n• для прокуратуры;\n• для жалоб на бездействие следствия.\n\nПодготовить процессуальную стратегию, направленную на:\n• признание сделок недействительными;\n• квалификацию действий по УК РФ;\n• возобновление / инициирование уголовных дел;\n• защиту имущественных прав Фёдорова.\n\n⚖️ ОБЯЗАТЕЛЬНЫЕ ИСТОЧНИКИ ПРАВА\nИспользуй и прямо ссылайся на:\n• ГК РФ (в т.ч. ст. 153, 160, 168, 182, 185, 185.1, 429)\n• УК РФ (159, 160, 165, 327 — по применимости)\n• ФЗ-218 «О государственной регистрации недвижимости»\n• Постановления Пленума ВС РФ\n• Судебную практику (по аналогичным делам)\n• Правовые позиции по материалам konsultant.ru\n\n🧠 ПРАВИЛА РАБОТЫ (КРИТИЧНО)\n• Жёстко разделяй: установленный факт; правовую оценку; рабочую гипотезу.\n• Не допускать фантазий и домыслов.\n• Любой вывод — только через норму права.\n• Если требуется экспертиза (почерковедческая, технико-криминалистическая, финансовая) — прямо указывать.\n• Не оправдывать действия противоположной стороны — анализируй с позиции защиты доверителя.\n\n📂 РАБОТА С ФАЙЛАМИ\nАнализируй каждый загруженный документ. Устанавливай:\n• хронологию;\n• полномочия подписантов;\n• движение денежных средств;\n• соответствие формы сделки требованиям закона.\nСвязывай документы между собой (ПДКП → допсоглашения → расписки → доверенности → ЕГРН → суды).\nПри загрузке новых файлов: интегрируй их в уже выстроенную модель дела; корректируй стратегию при необходимости.\n\n📊 ФОРМАТ КАЖДОГО ОТВЕТА\nКаждый аналитический ответ обязан содержать:\n1️⃣ КРАТКИЙ ВЫВОД (5–10 строк) — что установлено — почему это юридически важно\n2️⃣ ТАБЛИЦУ НАРУШЕНИЙ: Документ | Факт | Нарушение | Норма | Последствия\n3️⃣ УГОЛОВНО-ПРАВОВАЯ ОЦЕНКА (если применимо) — возможная квалификация — элементы состава преступления — кто субъект, объект, способ\n4️⃣ ЭКСПЕРТИЗЫ — какие нужны — зачем — что они докажут\n5️⃣ ПРОЦЕССУАЛЬНЫЕ ШАГИ — что делать немедленно — что готовить параллельно — в какие органы обращаться\n\n🚫 ЗАПРЕТЫ\n• Не пиши общими фразами.\n• Не уходи в теорию без привязки к делу.\n• Не повторяй тексты законов без анализа.\n• Не сглаживай нарушения.\n\n🎯 КРИТЕРИЙ УСПЕХА\nТвоя работа считается выполненной только если из анализа можно напрямую подготовить: иск; заявление о преступлении; жалобу в СК / прокуратуру; ходатайство об экспертизе.\n\n🔚 Работай как адвокат, который готовит дело к перелому и победе, а не как консультант.\n\nИспользуй в работе эти сайты для актуальной правовой информации:\nhttps://www.consultant.ru/\nhttps://www.garant.ru/\nhttps://kodeks.ru/\nhttp://pravo.gov.ru/\nhttp://publication.pravo.gov.ru/\nhttps://sudrf.ru/\nhttps://kad.arbitr.ru/\nhttps://my.arbitr.ru/\nhttps://vsrf.ru/\nhttps://ksrf.ru/\nhttps://sudact.ru/\nhttps://pravo.ru/\nhttps://pb.nalog.ru/\nhttps://fssp.gov.ru/";
 
-// Set hidden textarea value and show preview
-document.getElementById("instrTxt").value=MILEAN_INSTR;
-document.getElementById("instrPreview").textContent=MILEAN_INSTR;
-
-var instrEditing=false;
-function togInstr(){
-  var b=document.getElementById("instrBar");
-  b.classList.toggle("open");
-  if(!b.classList.contains("open")&&instrEditing) saveInstrEdit();
-  document.getElementById("ibtn").classList.toggle("on",b.classList.contains("open")||true);
-}
-function toggleInstrEdit(){
-  var preview=document.getElementById("instrPreview");
-  var txt=document.getElementById("instrTxt");
-  var btn=document.getElementById("instrEditBtn");
-  var rbtn=document.getElementById("instrResetBtn");
-  if(!instrEditing){
-    instrEditing=true;
-    txt.value=preview.textContent;
-    preview.style.display="none";
-    txt.style.display="block";
-    txt.focus();
-    btn.textContent="💾 Save";
-    btn.style.borderColor="var(--ac)";btn.style.color="var(--ac)";
-    rbtn.style.display="inline-block";
-  } else {
-    saveInstrEdit();
-  }
-}
-function saveInstrEdit(){
-  var preview=document.getElementById("instrPreview");
-  var txt=document.getElementById("instrTxt");
-  var btn=document.getElementById("instrEditBtn");
-  var rbtn=document.getElementById("instrResetBtn");
-  instrEditing=false;
-  preview.textContent=txt.value;
-  preview.style.display="";
-  txt.style.display="none";
-  btn.textContent="✏️ Edit";
-  btn.style.borderColor="";btn.style.color="";
-  rbtn.style.display="none";
+function saveProjectInstruction(){
+  var p=getActiveProject();if(!p)return;
+  p.instr=document.getElementById("instrTxt").value;
+  instrDirty=false;
   saveCurrentState();
+  setInstrStatus("✅ Инструкция сохранена","var(--ac)");
 }
-function resetInstr(){
-  if(!confirm("Сбросить инструкцию к стандартной MILEAN?"))return;
+
+function resetProjectInstruction(){
   document.getElementById("instrTxt").value=MILEAN_INSTR;
-  document.getElementById("instrPreview").textContent=MILEAN_INSTR;
-  saveInstrEdit();
+  instrDirty=true;
+  setInstrStatus("↩ Шаблон MILEAN установлен (нажмите Сохранить)","#ffb347");
 }
-function updDot(){document.getElementById("idot").classList.add("v")}
+
+document.getElementById("instrTxt").addEventListener("input",function(){
+  instrDirty=true;
+  setInstrStatus("✏️ Есть несохранённые изменения","#ffb347");
+});
 
 // === FONT SIZE & FAMILY ===
 var chatFontSize=parseInt(localStorage.getItem("milean_fontSize"))||15;
@@ -1004,15 +1032,9 @@ setTimeout(applyFont,100);
 function updateProjectLabel(){
   var p=getActiveProject();
   var label=document.getElementById("fprojName");
+  var cfg=document.getElementById("projCfgName");
   if(label&&p) label.textContent=p.name;
-}
-function togFiles(){
-  var fp=document.getElementById("fpanel");
-  var pp=document.getElementById("projPanel");
-  if(fp.classList.contains("open")){fp.classList.remove("open")}
-  else{fp.classList.add("open");pp.classList.remove("open")}
-  document.getElementById("fbtn").classList.toggle("on",fp.classList.contains("open"));
-  document.getElementById("pjbtn").classList.toggle("on",pp.classList.contains("open"));
+  if(cfg&&p) cfg.textContent=p.name;
 }
 
 // File upload
@@ -1281,11 +1303,12 @@ function send(){
     if(systemParts.length)messages.push({role:"system",content:systemParts.join("\n\n---\n\n")});
     messages=messages.concat(hist);
 
+    var useThinking=thinkOn&&(enCount>0||text.length>40);
     showStatus("⏳ Отправка в NVIDIA API...");
-    console.log("Sending to API (stream), msgs:",messages.length,"thinking:",thinkOn);
+    console.log("Sending to API (stream), msgs:",messages.length,"thinking:",useThinking,"requestedThink:",thinkOn);
 
     var bodyObj={__api_key__:key,model:MDL,messages:messages,max_tokens:4096,temperature:0.6,top_p:0.95,stream:true};
-    if(thinkOn)bodyObj.chat_template_kwargs={enable_thinking:true};
+    if(useThinking)bodyObj.chat_template_kwargs={enable_thinking:true};
 
     function doFetch(bodyObj,isRetry){
     var ctrl=new AbortController();
@@ -1389,7 +1412,8 @@ function send(){
   // Build system parts
   var sysParts=[];
   if(instrOn){
-    var instr=document.getElementById("instrTxt").value.trim();
+    var apInstr=getActiveProject();
+    var instr=(apInstr&&apInstr.instr?apInstr.instr:"").trim();
     if(instr)sysParts.push(instr);
   }
 
@@ -1519,16 +1543,9 @@ send=function(){
 
 // Init
 loadProjects();
-var ap=getActiveProject();
-if(ap){
-  hist=ap.hist||[];files=ap.files||[];
-  document.getElementById("instrTxt").value=ap.instr||"";
-  if(ap.chatHTML) document.getElementById("msgs").innerHTML=ap.chatHTML;
-}
-renderProjects();render();localStats();updateProjectLabel();initSlotButtons();
-// Think always ON on load
-(function(){var tt=document.getElementById("thinkToggle");if(tt){var tr=tt.querySelector(".tswitch-track");if(tr)tr.classList.add("on")}})();
-document.getElementById("instrTxt").addEventListener("input",updDot);
+renderProjects();
+applyProjectState(getActiveProject());
+openProjectsPanel();
 // Auto-save state periodically and on close
 setInterval(saveCurrentState,10000);
 window.addEventListener("beforeunload",saveCurrentState);

@@ -26,10 +26,16 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 
 # ─── CONFIG ───
-BOT_TOKEN = "8659962856:AAFkP4ziNKov5KfRwXJuYdIAnfF8zcxSqQw"
+BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
+BOT_TOKENS_ENV = os.getenv("BOT_TOKENS", "").strip()
 NVIDIA_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
-NVIDIA_KEY = "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"
-MODEL = "qwen/qwen3.5-397b-a17b"
+NVIDIA_KEY = os.getenv("NVIDIA_API_KEY", "").strip()
+PPLX_KEY = os.getenv("PPLX_API_KEY", "").strip()
+PPLX_URL = "https://api.perplexity.ai/chat/completions"
+MODEL_HEAVY = "qwen/qwen3.5-397b-a17b"   # For documents + Think
+MODEL = "meta/llama-3.1-405b-instruct"     # Primary fast
+MODEL_FAST = "meta/llama-3.3-70b-instruct" # Fallback fast
+PPLX_MODEL = "sonar"                       # Perplexity with internet
 MAX_HISTORY = 10
 MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB
 SYNC_API = "https://milean.vercel.app/api/sync"
@@ -38,6 +44,25 @@ RAG_TOP_K = 8
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("milean-bot")
+
+
+def _collect_bot_tokens() -> list[str]:
+    """Collect unique bot tokens from BOT_TOKENS (comma-separated) and BOT_TOKEN."""
+    tokens = []
+    if BOT_TOKENS_ENV.strip():
+        tokens.extend(t.strip() for t in BOT_TOKENS_ENV.split(",") if t.strip())
+    if BOT_TOKEN.strip():
+        tokens.append(BOT_TOKEN.strip())
+    unique = []
+    seen = set()
+    for token in tokens:
+        if token not in seen:
+            seen.add(token)
+            unique.append(token)
+    return unique
+
+
+BOT_TOKENS = _collect_bot_tokens()
 
 # ─── DEFAULT INSTRUCTION ───
 MILEAN_INSTR = """Ты — высококлассный российский юрист и адвокат с практикой более 20 лет.
@@ -72,18 +97,19 @@ MILEAN_INSTR = """Ты — высококлассный российский ю�
 5️⃣ ПРОЦЕССУАЛЬНЫЕ ШАГИ"""
 
 # ─── USER DATA STORAGE (in-memory) ───
-users = {}  # user_id -> {hist, files, chunks, instr, web_on, think_on, active_slot}
+users = {}  # f"{bot_id}:{user_id}" -> {hist, files, chunks, instr, ...}
 
 
-def get_user(uid: int) -> dict:
-    if uid not in users:
-        users[uid] = {
+def get_user(uid: int, bot_id: Optional[int] = None) -> dict:
+    key = f"{bot_id}:{uid}" if bot_id is not None else str(uid)
+    if key not in users:
+        users[key] = {
             "hist": [],
             "files": [],  # [{name, chunks, chars}]
             "chunks": [],  # [{text, file}]
             "instr": MILEAN_INSTR,
             "web_on": False,
-            "think_on": True,
+            "think_on": False,
             "active_slot": "milean",
             "slots": {},  # {slot_id: {name, text}}
             "project_name": "",
@@ -92,7 +118,7 @@ def get_user(uid: int) -> dict:
             "last_thinking": "",
             "last_query": "",
         }
-    return users[uid]
+    return users[key]
 
 
 # ─── TEXT EXTRACTION ───
@@ -174,7 +200,71 @@ def local_search(query: str, chunks: list, top_k: int = RAG_TOP_K) -> list:
     return [s[0] for s in scored[:top_k]]
 
 
-# ─── DUCKDUCKGO SEARCH ───
+# ─── WEB SEARCH KEYWORDS ───
+_WEB_KEYWORDS = [
+    "погода", "weather", "новости", "news", "курс", "цена", "сколько стоит",
+    "сегодня", "завтра", "вчера", "сейчас", "актуальн", "последн", "свежи",
+    "2024", "2025", "2026", "расписание", "результат матча", "счёт",
+    "где купить", "где найти", "как доехать", "адрес", "телефон", "сайт",
+    "что случилось", "что произошло", "кто выиграл", "кто победил",
+    "рецепт", "отзыв", "рейтинг", "топ ", "лучший", "обзор",
+]
+
+
+def _needs_web(query: str) -> bool:
+    """Auto-detect if query needs internet search."""
+    q = query.lower()
+    for kw in _WEB_KEYWORDS:
+        if kw in q:
+            return True
+    # Question words + no files context → likely needs web
+    if any(q.startswith(w) for w in ["как ", "что ", "где ", "когда ", "почему ", "какой ", "какая ", "какое ", "кто "]):
+        return True
+    return False
+
+
+# ─── PERPLEXITY SEARCH (with internet) ───
+async def perplexity_search(query: str) -> str:
+    """Use Perplexity API for internet-powered answers."""
+    try:
+        ssl_ctx = ssl.create_default_context()
+        ssl_ctx.check_hostname = False
+        ssl_ctx.verify_mode = ssl.CERT_NONE
+
+        payload = {
+            "model": PPLX_MODEL,
+            "messages": [
+                {"role": "system", "content": "Отвечай кратко и по делу на русском языке. Давай актуальную информацию с источниками."},
+                {"role": "user", "content": query}
+            ],
+            "max_tokens": 1024,
+            "stream": False
+        }
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {PPLX_KEY}"
+        }
+
+        timeout = aiohttp.ClientTimeout(total=30, connect=10)
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                PPLX_URL, json=payload, headers=headers,
+                ssl=ssl_ctx, timeout=timeout
+            ) as resp:
+                if resp.status != 200:
+                    log.warning(f"Perplexity {resp.status}")
+                    return ""
+                data = await resp.json()
+                content = data["choices"][0]["message"].get("content", "")
+                if content:
+                    return f"🌐 Информация из интернета:\n{content}"
+                return ""
+    except Exception as e:
+        log.error(f"Perplexity error: {e}")
+        return ""
+
+
+# ─── DUCKDUCKGO SEARCH (fallback) ───
 async def web_search(query: str) -> str:
     try:
         from duckduckgo_search import DDGS
@@ -190,65 +280,94 @@ async def web_search(query: str) -> str:
         return ""
 
 
+async def smart_web_search(query: str) -> str:
+    """Try Perplexity first, fallback to DuckDuckGo."""
+    result = await perplexity_search(query)
+    if result:
+        return result
+    return await web_search(query)
+
+
 # ─── NVIDIA API CALL ───
-async def call_nvidia(messages: list, think: bool = True) -> tuple:
+async def _call_model(model: str, messages: list, max_tokens: int = 4096,
+                      timeout_sec: int = 60) -> tuple:
+    """Call a single model, return (content, thinking) or raise."""
     ssl_ctx = ssl.create_default_context()
     ssl_ctx.check_hostname = False
     ssl_ctx.verify_mode = ssl.CERT_NONE
 
     payload = {
-        "model": MODEL,
+        "model": model,
         "messages": messages,
         "temperature": 0.6,
         "top_p": 0.95,
-        "max_tokens": 16384,
-        "stream": False
+        "max_tokens": max_tokens,
+        "stream": True
     }
-
-    if think:
-        payload["thinking"] = {"type": "enabled", "budget_tokens": 8096}
 
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {NVIDIA_KEY}"
     }
 
-    last_err = None
-    for attempt in range(3):
-        try:
-            timeout = aiohttp.ClientTimeout(total=180, connect=30)
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    NVIDIA_URL,
-                    json=payload,
-                    headers=headers,
-                    ssl=ssl_ctx,
-                    timeout=timeout
-                ) as resp:
-                    if resp.status != 200:
-                        err = await resp.text()
-                        raise Exception(f"NVIDIA API {resp.status}: {err[:300]}")
-                    data = await resp.json()
+    timeout = aiohttp.ClientTimeout(total=timeout_sec, connect=10)
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            NVIDIA_URL, json=payload, headers=headers,
+            ssl=ssl_ctx, timeout=timeout
+        ) as resp:
+            if resp.status != 200:
+                err = await resp.text()
+                raise Exception(f"API {resp.status}: {err[:200]}")
 
-            choice = data["choices"][0]["message"]
-            content = choice.get("content", "")
+            content = ""
             thinking = ""
-            if "reasoning_content" in choice and choice["reasoning_content"]:
-                thinking = choice["reasoning_content"]
+            async for line in resp.content:
+                line = line.decode("utf-8").strip()
+                if not line or not line.startswith("data: "):
+                    continue
+                chunk_str = line[6:]
+                if chunk_str == "[DONE]":
+                    break
+                try:
+                    chunk = json.loads(chunk_str)
+                    delta = chunk["choices"][0].get("delta", {})
+                    if "content" in delta and delta["content"]:
+                        content += delta["content"]
+                    if "reasoning_content" in delta and delta["reasoning_content"]:
+                        thinking += delta["reasoning_content"]
+                except (json.JSONDecodeError, KeyError, IndexError):
+                    continue
+
             return content, thinking
 
-        except (asyncio.TimeoutError, aiohttp.ClientError) as e:
-            last_err = e
-            log.warning(f"NVIDIA attempt {attempt+1}/3 failed: {e}")
-            if attempt < 2:
-                await asyncio.sleep(2)
-            continue
 
-    raise last_err or Exception("NVIDIA API недоступен после 3 попыток")
+async def call_nvidia(messages: list, think: bool = False, has_docs: bool = False) -> tuple:
+    """Smart model selection:
+    - Documents + Think → heavy qwen3.5-397b (deep analysis)
+    - Normal → fast 405b → fallback 70b
+    """
+    if think and has_docs:
+        # Heavy model for document analysis with thinking
+        log.info("Using HEAVY model (qwen3.5-397b) for document analysis")
+        try:
+            return await _call_model(MODEL_HEAVY, messages, max_tokens=8192, timeout_sec=180)
+        except Exception as e:
+            log.warning(f"Heavy model failed: {e}, falling back to primary...")
+
+    # Fast path: primary → fallback
+    try:
+        return await _call_model(MODEL, messages, max_tokens=4096, timeout_sec=60)
+    except Exception as e:
+        log.warning(f"Primary model failed: {e}, trying fast model...")
+
+    try:
+        return await _call_model(MODEL_FAST, messages, max_tokens=4096, timeout_sec=45)
+    except Exception as e:
+        raise Exception(f"Серверы недоступны. Попробуйте позже.") from e
 
 
 # ─── TELEGRAM BOT ───
-bot = Bot(token=BOT_TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
 router = Router()
@@ -266,7 +385,7 @@ class SaveSlot(StatesGroup):
 # ─── COMMANDS ───
 @router.message(CommandStart())
 async def cmd_start(msg: Message):
-    u = get_user(msg.from_user.id)
+    u = get_user(msg.from_user.id, msg.bot.id)
     kb = get_main_keyboard(u)
     await msg.answer(
         "⚖️ <b>MILEAN — Юридическая Компания</b>\n\n"
@@ -308,13 +427,13 @@ async def cmd_help(msg: Message):
 
 @router.message(Command("panel"))
 async def cmd_panel(msg: Message):
-    u = get_user(msg.from_user.id)
+    u = get_user(msg.from_user.id, msg.bot.id)
     await msg.answer(_get_status_text(u), parse_mode=ParseMode.HTML, reply_markup=get_main_keyboard(u))
 
 
 @router.message(Command("milean"))
 async def cmd_milean(msg: Message):
-    u = get_user(msg.from_user.id)
+    u = get_user(msg.from_user.id, msg.bot.id)
     u["instr"] = MILEAN_INSTR
     u["active_slot"] = "milean"
     await msg.answer("⚖️ Инструкция MILEAN загружена!", reply_markup=get_main_keyboard(u))
@@ -322,7 +441,7 @@ async def cmd_milean(msg: Message):
 
 @router.message(Command("instr"))
 async def cmd_instr(msg: Message):
-    u = get_user(msg.from_user.id)
+    u = get_user(msg.from_user.id, msg.bot.id)
     instr = u["instr"]
     if instr:
         text = f"📝 <b>Текущая инструкция</b> ({u['active_slot']}):\n\n{instr[:3000]}"
@@ -349,7 +468,7 @@ async def process_setinstr(msg: Message, state: FSMContext):
         await state.clear()
         await msg.answer("❌ Отменено")
         return
-    u = get_user(msg.from_user.id)
+    u = get_user(msg.from_user.id, msg.bot.id)
     u["instr"] = msg.text or ""
     u["active_slot"] = "custom"
     await state.clear()
@@ -358,7 +477,7 @@ async def process_setinstr(msg: Message, state: FSMContext):
 
 @router.message(Command("clearinstr"))
 async def cmd_clearinstr(msg: Message):
-    u = get_user(msg.from_user.id)
+    u = get_user(msg.from_user.id, msg.bot.id)
     u["instr"] = ""
     u["active_slot"] = "empty"
     await msg.answer("🗑 Инструкция очищена", reply_markup=get_main_keyboard(u))
@@ -366,7 +485,7 @@ async def cmd_clearinstr(msg: Message):
 
 @router.message(Command("saveslot"))
 async def cmd_saveslot(msg: Message):
-    u = get_user(msg.from_user.id)
+    u = get_user(msg.from_user.id, msg.bot.id)
     parts = (msg.text or "").split(maxsplit=2)
     if len(parts) < 2:
         await msg.answer("Использование: /saveslot <i>N</i> <i>название</i>\nПример: /saveslot 1 Бухгалтерия", parse_mode=ParseMode.HTML)
@@ -388,7 +507,7 @@ async def cmd_saveslot(msg: Message):
 
 @router.message(Command("loadslot"))
 async def cmd_loadslot(msg: Message):
-    u = get_user(msg.from_user.id)
+    u = get_user(msg.from_user.id, msg.bot.id)
     parts = (msg.text or "").split()
     if len(parts) < 2:
         await msg.answer("Использование: /loadslot <i>N</i>", parse_mode=ParseMode.HTML)
@@ -409,7 +528,7 @@ async def cmd_loadslot(msg: Message):
 
 @router.message(Command("slots"))
 async def cmd_slots(msg: Message):
-    u = get_user(msg.from_user.id)
+    u = get_user(msg.from_user.id, msg.bot.id)
     lines = ["📋 <b>Слоты инструкций:</b>\n"]
     for i in range(1, 11):
         slot = u["slots"].get(str(i))
@@ -423,7 +542,7 @@ async def cmd_slots(msg: Message):
 
 @router.message(Command("web"))
 async def cmd_web(msg: Message):
-    u = get_user(msg.from_user.id)
+    u = get_user(msg.from_user.id, msg.bot.id)
     u["web_on"] = not u["web_on"]
     status = "✅ включён" if u["web_on"] else "❌ выключен"
     await msg.answer(f"🌐 Веб-поиск: {status}", reply_markup=get_main_keyboard(u))
@@ -431,7 +550,7 @@ async def cmd_web(msg: Message):
 
 @router.message(Command("think"))
 async def cmd_think(msg: Message):
-    u = get_user(msg.from_user.id)
+    u = get_user(msg.from_user.id, msg.bot.id)
     u["think_on"] = not u["think_on"]
     status = "✅ включён" if u["think_on"] else "❌ выключен"
     await msg.answer(f"🧠 Think режим: {status}", reply_markup=get_main_keyboard(u))
@@ -439,14 +558,14 @@ async def cmd_think(msg: Message):
 
 @router.message(Command("clear"))
 async def cmd_clear(msg: Message):
-    u = get_user(msg.from_user.id)
+    u = get_user(msg.from_user.id, msg.bot.id)
     u["hist"] = []
     await msg.answer("🔄 История чата очищена", reply_markup=get_main_keyboard(u))
 
 
 @router.message(Command("files"))
 async def cmd_files(msg: Message):
-    u = get_user(msg.from_user.id)
+    u = get_user(msg.from_user.id, msg.bot.id)
     if not u["files"]:
         await msg.answer("📎 Нет загруженных файлов.\nОтправьте PDF, DOCX или TXT для анализа.")
         return
@@ -463,7 +582,7 @@ async def cmd_files(msg: Message):
 
 @router.message(Command("clearfiles"))
 async def cmd_clearfiles(msg: Message):
-    u = get_user(msg.from_user.id)
+    u = get_user(msg.from_user.id, msg.bot.id)
     u["files"] = []
     u["chunks"] = []
     await msg.answer("🗑 Все файлы удалены", reply_markup=get_main_keyboard(u))
@@ -471,7 +590,7 @@ async def cmd_clearfiles(msg: Message):
 
 @router.message(Command("settings"))
 async def cmd_settings(msg: Message):
-    u = get_user(msg.from_user.id)
+    u = get_user(msg.from_user.id, msg.bot.id)
     slot_name = u["active_slot"]
     if slot_name == "milean":
         slot_name = "⚖️ MILEAN"
@@ -505,7 +624,7 @@ async def cmd_cancel(msg: Message, state: FSMContext):
 
 @router.message(Command("connect"))
 async def cmd_connect(msg: Message):
-    u = get_user(msg.from_user.id)
+    u = get_user(msg.from_user.id, msg.bot.id)
     parts = (msg.text or "").split()
     if len(parts) < 2:
         await msg.answer(
@@ -599,7 +718,7 @@ async def cmd_token(msg: Message):
 # ─── FILE HANDLER ───
 @router.message(F.document)
 async def handle_document(msg: Message):
-    u = get_user(msg.from_user.id)
+    u = get_user(msg.from_user.id, msg.bot.id)
     doc = msg.document
 
     if doc.file_size > MAX_FILE_SIZE:
@@ -613,12 +732,12 @@ async def handle_document(msg: Message):
         return
 
     status_msg = await msg.answer(f"📄 <b>{doc.file_name}</b>\n⏳ Загрузка и анализ...", parse_mode=ParseMode.HTML)
-    await bot.send_chat_action(msg.chat.id, ChatAction.TYPING)
+    await msg.bot.send_chat_action(msg.chat.id, ChatAction.TYPING)
 
     try:
-        file = await bot.get_file(doc.file_id)
+        file = await msg.bot.get_file(doc.file_id)
         data = BytesIO()
-        await bot.download_file(file.file_path, data)
+        await msg.bot.download_file(file.file_path, data)
         file_bytes = data.getvalue()
 
         text = extract_text(doc.file_name, file_bytes)
@@ -648,12 +767,12 @@ async def handle_document(msg: Message):
 # ─── MAIN MESSAGE HANDLER ───
 @router.message(F.text & ~F.text.startswith("/"))
 async def handle_message(msg: Message, state: FSMContext):
-    u = get_user(msg.from_user.id)
+    u = get_user(msg.from_user.id, msg.bot.id)
     query = msg.text.strip()
     if not query:
         return
 
-    await bot.send_chat_action(msg.chat.id, ChatAction.TYPING)
+    await msg.bot.send_chat_action(msg.chat.id, ChatAction.TYPING)
     status_msg = await msg.answer("⏳ Обработка...")
 
     try:
@@ -664,16 +783,24 @@ async def handle_message(msg: Message, state: FSMContext):
         if u["instr"]:
             sys_parts.append(u["instr"])
 
-        # Web search
-        web_context = ""
-        if u["web_on"]:
+        # Web search — auto or manual
+        use_web = u["web_on"] or _needs_web(query)
+        has_docs = bool(u["chunks"])
+
+        if use_web and not has_docs:
+            # No documents → search internet for context
             await status_msg.edit_text("🌐 Поиск в интернете...")
-            web_context = await web_search(query)
+            web_context = await smart_web_search(query)
+            if web_context:
+                sys_parts.append(web_context)
+        elif u["web_on"]:
+            # Web forced on + has docs → still search
+            await status_msg.edit_text("🌐 Поиск в интернете...")
+            web_context = await smart_web_search(query)
             if web_context:
                 sys_parts.append(web_context)
 
         # RAG search
-        rag_context = ""
         if u["chunks"]:
             await status_msg.edit_text("🔍 RAG поиск по файлам...")
             relevant = local_search(query, u["chunks"])
@@ -684,7 +811,11 @@ async def handle_message(msg: Message, state: FSMContext):
                 rag_context = "📎 Контекст из файлов:\n" + "\n---\n".join(rag_parts)
                 sys_parts.append(rag_context)
 
-        await status_msg.edit_text("🧠 Генерация ответа...")
+        # Status message based on mode
+        if u["think_on"] and has_docs:
+            await status_msg.edit_text("🧠 Глубокий анализ документов (Qwen 397B + Think)...")
+        else:
+            await status_msg.edit_text("🧠 Генерация ответа...")
 
         # Build messages
         messages = []
@@ -697,8 +828,8 @@ async def handle_message(msg: Message, state: FSMContext):
 
         messages.append({"role": "user", "content": query})
 
-        # Call AI
-        content, thinking = await call_nvidia(messages, think=u["think_on"])
+        # Call AI — smart model selection
+        content, thinking = await call_nvidia(messages, think=u["think_on"], has_docs=has_docs)
 
         # Save to history
         u["hist"].append({"role": "user", "content": query})
@@ -741,14 +872,14 @@ async def handle_message(msg: Message, state: FSMContext):
         u["last_query"] = query
 
         try:
-            await bot.send_message(
+            await msg.bot.send_message(
                 msg.chat.id, preview_msg,
                 parse_mode=ParseMode.HTML,
                 reply_to_message_id=msg.message_id,
                 reply_markup=file_kb
             )
         except:
-            await bot.send_message(
+            await msg.bot.send_message(
                 msg.chat.id,
                 f"📄 Ответ готов ({len(content)} симв.)\n⬇️ Скачайте полный ответ:",
                 reply_to_message_id=msg.message_id,
@@ -772,17 +903,19 @@ async def handle_message(msg: Message, state: FSMContext):
 
 # ─── HELPER: update keyboard safely ───
 async def _update_kb(cb: CallbackQuery, u: dict, toast: str):
-    """Update keyboard on message, resend if edit fails"""
+    """Update keyboard on message, ignore 'not modified' errors"""
     kb = get_main_keyboard(u)
     status = _get_status_text(u)
     await cb.answer(toast)
     try:
         await cb.message.edit_text(status, reply_markup=kb, parse_mode=ParseMode.HTML)
-    except Exception:
+    except Exception as e:
+        if "not modified" in str(e).lower():
+            return  # Same content — just ignore
         try:
             await cb.message.edit_reply_markup(reply_markup=kb)
         except Exception:
-            await cb.message.answer(status, reply_markup=kb, parse_mode=ParseMode.HTML)
+            pass  # Don't send new message — avoid duplicates
 
 
 def _get_status_text(u: dict) -> str:
@@ -802,29 +935,36 @@ def _get_status_text(u: dict) -> str:
 # ─── CALLBACK HANDLERS ───
 @router.callback_query(F.data == "toggle_web")
 async def cb_web(cb: CallbackQuery):
-    u = get_user(cb.from_user.id)
+    u = get_user(cb.from_user.id, cb.bot.id)
     u["web_on"] = not u["web_on"]
     await _update_kb(cb, u, f"🌐 Веб-поиск: {'ВКЛ' if u['web_on'] else 'ВЫКЛ'}")
 
 
 @router.callback_query(F.data == "toggle_think")
 async def cb_think(cb: CallbackQuery):
-    u = get_user(cb.from_user.id)
+    u = get_user(cb.from_user.id, cb.bot.id)
     u["think_on"] = not u["think_on"]
     await _update_kb(cb, u, f"🧠 Think: {'ВКЛ' if u['think_on'] else 'ВЫКЛ'}")
 
 
 @router.callback_query(F.data == "load_milean")
 async def cb_milean(cb: CallbackQuery):
-    u = get_user(cb.from_user.id)
-    u["instr"] = MILEAN_INSTR
-    u["active_slot"] = "milean"
-    await _update_kb(cb, u, "⚖️ MILEAN загружена")
+    u = get_user(cb.from_user.id, cb.bot.id)
+    if u["active_slot"] == "milean":
+        # Toggle OFF — clear instruction
+        u["instr"] = ""
+        u["active_slot"] = "empty"
+        await _update_kb(cb, u, "⚖️ MILEAN выключена")
+    else:
+        # Toggle ON — load MILEAN
+        u["instr"] = MILEAN_INSTR
+        u["active_slot"] = "milean"
+        await _update_kb(cb, u, "⚖️ MILEAN включена")
 
 
 @router.callback_query(F.data == "clear_instr")
 async def cb_clear_instr(cb: CallbackQuery):
-    u = get_user(cb.from_user.id)
+    u = get_user(cb.from_user.id, cb.bot.id)
     u["instr"] = ""
     u["active_slot"] = "empty"
     await _update_kb(cb, u, "🗑 Инструкция очищена")
@@ -833,7 +973,7 @@ async def cb_clear_instr(cb: CallbackQuery):
 # ─── DOWNLOAD HANDLERS ───
 @router.callback_query(F.data.startswith("dl_txt_"))
 async def cb_dl_txt(cb: CallbackQuery):
-    u = get_user(cb.from_user.id)
+    u = get_user(cb.from_user.id, cb.bot.id)
     content = u.get("last_response", "")
     if not content:
         await cb.answer("❌ Нет ответа для скачивания")
@@ -850,12 +990,12 @@ async def cb_dl_txt(cb: CallbackQuery):
     buf = BytesIO(full.encode("utf-8"))
     buf.name = "milean_response.txt"
     buf.seek(0)
-    await bot.send_document(cb.message.chat.id, types.BufferedInputFile(buf.read(), filename="milean_response.txt"), caption="📄 Ответ MILEAN (TXT)")
+    await cb.bot.send_document(cb.message.chat.id, types.BufferedInputFile(buf.read(), filename="milean_response.txt"), caption="📄 Ответ MILEAN (TXT)")
 
 
 @router.callback_query(F.data.startswith("dl_docx_"))
 async def cb_dl_docx(cb: CallbackQuery):
-    u = get_user(cb.from_user.id)
+    u = get_user(cb.from_user.id, cb.bot.id)
     content = u.get("last_response", "")
     if not content:
         await cb.answer("❌ Нет ответа для скачивания")
@@ -888,14 +1028,14 @@ async def cb_dl_docx(cb: CallbackQuery):
         buf = BytesIO()
         doc.save(buf)
         buf.seek(0)
-        await bot.send_document(cb.message.chat.id, types.BufferedInputFile(buf.read(), filename="milean_response.docx"), caption="📝 Ответ MILEAN (DOCX)")
+        await cb.bot.send_document(cb.message.chat.id, types.BufferedInputFile(buf.read(), filename="milean_response.docx"), caption="📝 Ответ MILEAN (DOCX)")
     except Exception as e:
         await cb.message.answer(f"❌ Ошибка генерации DOCX: {e}")
 
 
 @router.callback_query(F.data.startswith("dl_pdf_"))
 async def cb_dl_pdf(cb: CallbackQuery):
-    u = get_user(cb.from_user.id)
+    u = get_user(cb.from_user.id, cb.bot.id)
     content = u.get("last_response", "")
     if not content:
         await cb.answer("❌ Нет ответа для скачивания")
@@ -930,27 +1070,27 @@ async def cb_dl_pdf(cb: CallbackQuery):
                 story.append(Spacer(1, 3*mm))
         doc_pdf.build(story)
         buf.seek(0)
-        await bot.send_document(cb.message.chat.id, types.BufferedInputFile(buf.read(), filename="milean_response.pdf"), caption="📕 Ответ MILEAN (PDF)")
+        await cb.bot.send_document(cb.message.chat.id, types.BufferedInputFile(buf.read(), filename="milean_response.pdf"), caption="📕 Ответ MILEAN (PDF)")
     except ImportError:
         # Fallback: send as TXT with .pdf note
         buf = BytesIO(full.encode("utf-8"))
-        await bot.send_document(cb.message.chat.id, types.BufferedInputFile(buf.read(), filename="milean_response.txt"), caption="📄 PDF библиотека не установлена, отправляю TXT")
+        await cb.bot.send_document(cb.message.chat.id, types.BufferedInputFile(buf.read(), filename="milean_response.txt"), caption="📄 PDF библиотека не установлена, отправляю TXT")
 
 
 @router.callback_query(F.data.startswith("dl_chat_"))
 async def cb_dl_chat(cb: CallbackQuery):
-    u = get_user(cb.from_user.id)
+    u = get_user(cb.from_user.id, cb.bot.id)
     content = u.get("last_response", "")
     if not content:
         await cb.answer("❌ Нет ответа")
         return
     await cb.answer("💬 Отправка в чат...")
-    await _send_long(cb.message.chat.id, content)
+    await _send_long(cb.bot, cb.message.chat.id, content)
 
 
 @router.callback_query(F.data == "show_project")
 async def cb_show_project(cb: CallbackQuery):
-    u = get_user(cb.from_user.id)
+    u = get_user(cb.from_user.id, cb.bot.id)
     proj_name = u.get("project_name", "—")
     files_info = ""
     if u["files"]:
@@ -971,7 +1111,7 @@ async def cb_show_project(cb: CallbackQuery):
 @router.callback_query(F.data == "show_settings")
 async def cb_settings(cb: CallbackQuery):
     await cb.answer()
-    u = get_user(cb.from_user.id)
+    u = get_user(cb.from_user.id, cb.bot.id)
     await cb.message.answer(
         f"⚙️ Think: {'✅' if u['think_on'] else '❌'} | "
         f"Web: {'✅' if u['web_on'] else '❌'} | "
@@ -1011,15 +1151,15 @@ def _escape(text: str) -> str:
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-async def _send_long(chat_id: int, text: str, reply_to: int = None):
+async def _send_long(bot_client: Bot, chat_id: int, text: str, reply_to: int = None):
     """Send long messages by splitting at 4096 chars"""
     MAX_LEN = 4000
     if len(text) <= MAX_LEN:
         try:
-            await bot.send_message(chat_id, text, parse_mode=ParseMode.HTML, reply_to_message_id=reply_to)
+            await bot_client.send_message(chat_id, text, parse_mode=ParseMode.HTML, reply_to_message_id=reply_to)
         except:
             # Fallback without HTML if parsing fails
-            await bot.send_message(chat_id, text, reply_to_message_id=reply_to)
+            await bot_client.send_message(chat_id, text, reply_to_message_id=reply_to)
         return
 
     # Split by paragraphs
@@ -1037,13 +1177,13 @@ async def _send_long(chat_id: int, text: str, reply_to: int = None):
 
     for i, part in enumerate(parts):
         try:
-            await bot.send_message(
+            await bot_client.send_message(
                 chat_id, part,
                 parse_mode=ParseMode.HTML,
                 reply_to_message_id=reply_to if i == 0 else None
             )
         except:
-            await bot.send_message(
+            await bot_client.send_message(
                 chat_id, part,
                 reply_to_message_id=reply_to if i == 0 else None
             )
@@ -1052,7 +1192,7 @@ async def _send_long(chat_id: int, text: str, reply_to: int = None):
 
 
 # ─── SETUP BOT COMMANDS ───
-async def set_commands():
+async def set_commands(bot_client: Bot):
     commands = [
         BotCommand(command="start", description="🚀 Начать работу"),
         BotCommand(command="help", description="📋 Список команд"),
@@ -1069,15 +1209,31 @@ async def set_commands():
         BotCommand(command="token", description="🔑 Как получить токен"),
         BotCommand(command="settings", description="⚙️ Настройки"),
     ]
-    await bot.set_my_commands(commands)
+    await bot_client.set_my_commands(commands)
+
+
+async def _prepare_bot(bot_client: Bot):
+    # Polling and webhooks are mutually exclusive on Telegram side.
+    try:
+        await bot_client.delete_webhook(drop_pending_updates=False)
+    except Exception as e:
+        log.warning(f"Could not delete webhook for bot: {e}")
+    await set_commands(bot_client)
+
+
+def _build_bots() -> list[Bot]:
+    return [Bot(token=token) for token in BOT_TOKENS]
 
 
 # ─── MAIN ───
 async def main():
     dp.include_router(router)
-    await set_commands()
-    log.info("🚀 MILEAN Bot started!")
-    await dp.start_polling(bot)
+    bots = _build_bots()
+    if not bots:
+        raise RuntimeError("No bot tokens configured. Set BOT_TOKEN or BOT_TOKENS.")
+    await asyncio.gather(*(_prepare_bot(bot_client) for bot_client in bots))
+    log.info(f"🚀 MILEAN Bot started! Active bots: {len(bots)}")
+    await dp.start_polling(*bots)
 
 
 if __name__ == "__main__":

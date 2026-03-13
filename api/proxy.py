@@ -48,13 +48,19 @@ class handler(BaseHTTPRequestHandler):
 
         try:
             resp = urllib.request.urlopen(req, timeout=120, context=SSL_CTX)
-            data = resp.read()
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream; charset=utf-8")
             self.send_header("Cache-Control", "no-cache")
+            self.send_header("X-Accel-Buffering", "no")
             self._cors()
             self.end_headers()
-            self.wfile.write(data)
+            # Stream chunks as they arrive instead of buffering whole response first.
+            while True:
+                chunk = resp.read(4096)
+                if not chunk:
+                    break
+                self.wfile.write(chunk)
+                self.wfile.flush()
         except urllib.error.HTTPError as e:
             err = e.read().decode("utf-8", errors="replace")
             self._json(e.code, {"error": err})

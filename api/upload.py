@@ -1,7 +1,10 @@
 """POST /api/upload — multipart file upload"""
 from http.server import BaseHTTPRequestHandler
 import json, re, sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+# Make sure local api modules (e.g. _storage.py) are importable in serverless runtime.
+sys.path.insert(0, os.path.dirname(__file__))
+
 from _storage import upload_files
 
 class handler(BaseHTTPRequestHandler):
