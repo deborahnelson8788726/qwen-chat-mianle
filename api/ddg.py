@@ -40,9 +40,9 @@ class TextExtractor(HTMLParser):
             self.current["snippet"] = self.current.get("snippet", "") + data
 
 
-def ddg_search(query, num=5):
+def ddg_search(query, num=8):
     """Search DuckDuckGo HTML version and parse results"""
-    data = urllib.parse.urlencode({"q": query, "kl": "ru-ru"}).encode()
+    data = urllib.parse.urlencode({"q": query, "kl": "wt-wt"}).encode()
     req = urllib.request.Request(
         DDG_HTML, data=data,
         headers={
@@ -88,7 +88,7 @@ class handler(BaseHTTPRequestHandler):
             return
 
         try:
-            results = ddg_search(query, num=6)
+            results = ddg_search(query, num=8)
             content = ""
             citations = []
             for i, r in enumerate(results):

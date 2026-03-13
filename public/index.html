@@ -1452,6 +1452,24 @@ function send(){
 
   function doWebThenSend(parts,query){
     var searches=[],citations=[],seenCitations={};
+    var q=(query||"").toLowerCase();
+    var forceWeb=/\b(today|latest|news|price|cost|buy|availability|release|launched|202[4-9])\b|сегодня|сейчас|актуаль|последн|новост|цена|ценник|сколько стоит|стоим|купить|наличие|вышел|релиз|парагва|магазин|где купить|самый выгод/i.test(q);
+    var priceIntent=/\b(price|cost|buy|cheapest|deal)\b|цена|ценник|сколько стоит|купить|где купить|самый выгод|дешевле|наличие/i.test(q);
+    var gotWebData=false;
+    if(forceWeb){
+      parts.push(
+        "КРИТИЧЕСКОЕ ПРАВИЛО АКТУАЛЬНОСТИ: вопрос требует свежих данных из интернета. " +
+        "Опирайся ТОЛЬКО на блоки веб-поиска/страниц в этом контексте. " +
+        "Не утверждай, что товар или модель не существует, если в источниках есть противоположные данные. " +
+        "Если данных недостаточно или они противоречат — прямо укажи это и приведи ссылки."
+      );
+      if(priceIntent){
+        parts.push(
+          "ФОРМАТ ДЛЯ ЗАПРОСОВ О ЦЕНЕ: выдай краткую таблицу: магазин | модель | цена | валюта | дата/время | ссылка. " +
+          "После таблицы назови самый выгодный найденный вариант и укажи, что цена может меняться."
+        );
+      }
+    }
     function addCitations(arr){
       if(!arr||!arr.length)return;
       for(var i=0;i<arr.length;i++){
@@ -1468,7 +1486,13 @@ function send(){
         if(/^https?:\/\//i.test(u))urls.push(u);
       }
       urls=urls.slice(0,3);
-      if(!urls.length) return doSend(parts);
+      if(!urls.length){
+        if(forceWeb&&!gotWebData){
+          parts.push("Не удалось получить релевантные данные из интернет-поиска по этому запросу. " +
+            "Нельзя делать категоричные выводы о наличии/цене без источников.");
+        }
+        return doSend(parts);
+      }
 
       showStatus("📄 Чтение страниц...");
       fetch("/api/fetch",{method:"POST",headers:{"Content-Type":"application/json"},
@@ -1493,7 +1517,11 @@ function send(){
       });
     }
     // Perplexity
-    if(webMode){
+    var pplxKey=document.getElementById("pplxKey").value.trim();
+    var usePplx=webMode||(forceWeb&&!!pplxKey);
+    var useDdg=ddgMode||forceWeb;
+
+    if(usePplx){
       var pplxKey=document.getElementById("pplxKey").value.trim();
       if(pplxKey){
         searches.push(
@@ -1501,6 +1529,7 @@ function send(){
             body:JSON.stringify({key:pplxKey,query:query})
           }).then(function(r){return r.json()}).then(function(data){
             if(data.content){
+              gotWebData=true;
               var webCtx="РЕЗУЛЬТАТЫ ВЕБ-ПОИСКА (Perplexity):\n"+data.content;
               if(data.citations&&data.citations.length){
                 webCtx+="\n\nИсточники:\n"+data.citations.map(function(u,i){return "["+(i+1)+"] "+u}).join("\n");
@@ -1514,12 +1543,13 @@ function send(){
       }
     }
     // DuckDuckGo
-    if(ddgMode){
+    if(useDdg){
       searches.push(
         fetch("/api/ddg",{method:"POST",headers:{"Content-Type":"application/json"},
           body:JSON.stringify({query:query})
         }).then(function(r){return r.json()}).then(function(data){
           if(data.content){
+            gotWebData=true;
             var ddgCtx="РЕЗУЛЬТАТЫ ВЕБ-ПОИСКА (DuckDuckGo):\n"+data.content;
             if(data.citations&&data.citations.length){
               ddgCtx+="\n\nСсылки:\n"+data.citations.map(function(u,i){return "["+(i+1)+"] "+u}).join("\n");

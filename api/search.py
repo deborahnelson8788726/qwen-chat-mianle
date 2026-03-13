@@ -29,13 +29,12 @@ class handler(BaseHTTPRequestHandler):
         payload = json.dumps({
             "model": "sonar",
             "messages": [
-                {"role": "system", "content": "Ты помощник для веб-поиска. Отвечай кратко и информативно на русском языке. Приводи ключевые факты, даты, ссылки."},
+                {"role": "system", "content": "Ты помощник для веб-поиска. Отвечай строго по найденным источникам, без догадок. Обязательно указывай факты, даты и ссылки. Если данных недостаточно — так и скажи."},
                 {"role": "user", "content": query}
             ],
             "max_tokens": 1024,
             "temperature": 0.2,
-            "return_citations": True,
-            "search_recency_filter": "month"
+            "return_citations": True
         }, ensure_ascii=False).encode("utf-8")
 
         req = urllib.request.Request(
