@@ -186,6 +186,17 @@ select.hbtn option{background:var(--s);color:var(--t)}
 #sbtn svg{fill:var(--bg)}
 .imeta{display:flex;flex-direction:column;gap:4px;padding:8px 4px 0}
 .imeta span{font-size:10px;font-family:'Space Mono',monospace;color:var(--t2)}
+.loadstat{display:flex;flex-direction:column;gap:5px;padding:8px 4px 0}
+.loadtrack{height:4px;background:var(--bd);border-radius:99px;overflow:hidden}
+.loadfill{height:100%;width:0;background:linear-gradient(90deg,#ffb347,var(--ac));transition:width .25s ease,background .25s ease}
+.loadmeta{display:flex;align-items:center;gap:6px}
+.loadmeta span{font-size:10px;font-family:'Space Mono',monospace;color:var(--t2)}
+.ldot{width:6px;height:6px;border-radius:50%;background:var(--t2);opacity:.6;transition:all .2s}
+.loadstat.on .ldot{background:#ffb347;opacity:1;box-shadow:0 0 8px rgba(255,179,71,.45)}
+.loadstat.done .ldot{background:var(--ac);opacity:1;box-shadow:0 0 8px var(--ac)}
+.loadstat.done .loadfill{background:linear-gradient(90deg,var(--ac),var(--ac2))}
+.loadstat.err .ldot{background:#ff6262;opacity:1;box-shadow:0 0 8px rgba(255,98,98,.5)}
+.loadstat.err .loadfill{background:linear-gradient(90deg,#ff6262,#ff9f9f)}
 .err{background:rgba(220,50,50,.08);border:1px solid rgba(220,50,50,.25);color:#ff7070;padding:10px 14px;border-radius:7px;font-size:12px;font-family:'Space Mono',monospace}
 .tswitch{display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none}
 .tswitch-track{width:34px;height:18px;border-radius:9px;background:var(--bd);position:relative;transition:background .2s;flex-shrink:0}
@@ -361,6 +372,10 @@ body.light .sdot{background:var(--ac);box-shadow:0 0 6px var(--ac)}
 </div>
 </div>
 <div class="imeta"><span>🔍 RAG активен</span><span>Enter = отправить</span><span>Shift+Enter = новая строка</span></div>
+<div class="loadstat" id="loadStat">
+<div class="loadtrack"><div class="loadfill" id="loadFill"></div></div>
+<div class="loadmeta"><div class="ldot"></div><span id="loadTxt">Готово</span></div>
+</div>
 </div>
 </div>
 </div>
@@ -467,6 +482,7 @@ window.addEventListener("unhandledrejection",function(e){
 var API="/api/proxy",MDL="qwen/qwen3.5-397b-a17b";
 var hist=[],loading=false,files=[],ragSrc=[],allOn=true,thinkOn=false,txtMode=false,docMode=false,webMode=false,ddgMode=false,instrOn=true;
 var instrDirty=false;
+var loadState="idle",loadPct=0,loadLabel="Готово",loadDoneTimer=null;
 
 function defaultProjectSettings(){
   return {
@@ -1252,7 +1268,70 @@ function showFileCard(text,type,parentEl){
   document.getElementById("msgs").scrollTop=document.getElementById("msgs").scrollHeight;
 }
 
-function showStatus(t){var s=document.getElementById("sbar"),st=document.getElementById("stxt");if(t){s.classList.add("v");st.textContent=t}else{s.classList.remove("v")}}
+function paintLoadProgress(){
+  var box=document.getElementById("loadStat"),fill=document.getElementById("loadFill"),txt=document.getElementById("loadTxt");
+  if(!box||!fill||!txt)return;
+  box.classList.remove("on","done","err");
+  if(loadState==="loading")box.classList.add("on");
+  else if(loadState==="done")box.classList.add("done");
+  else if(loadState==="error")box.classList.add("err");
+  fill.style.width=Math.max(0,Math.min(100,loadPct))+"%";
+  txt.textContent=loadLabel||"";
+}
+function beginLoadProgress(label){
+  clearTimeout(loadDoneTimer);
+  loadState="loading";
+  loadPct=6;
+  loadLabel=label||"⏳ Подготовка запроса...";
+  paintLoadProgress();
+}
+function setLoadProgress(pct,label){
+  if(loadState!=="loading")return;
+  loadPct=Math.max(loadPct,Math.min(99,pct));
+  if(label)loadLabel=label;
+  paintLoadProgress();
+}
+function bumpLoadProgress(step,label){
+  if(loadState!=="loading")return;
+  var s=typeof step==="number"?step:0.8;
+  setLoadProgress(loadPct+s,label||loadLabel);
+}
+function finishLoadProgress(ok,label){
+  clearTimeout(loadDoneTimer);
+  loadState=ok?"done":"error";
+  loadPct=100;
+  loadLabel=label||(ok?"✅ Всё загружено":"⚠ Загрузка прервана");
+  paintLoadProgress();
+  loadDoneTimer=setTimeout(function(){
+    if(loading)return;
+    loadState="idle";
+    loadPct=0;
+    loadLabel="Готово";
+    paintLoadProgress();
+  },ok?4000:6000);
+}
+function syncLoadWithStatus(t){
+  if(loadState!=="loading"||!t)return;
+  var p=loadPct;
+  if(t.indexOf("RAG")!==-1)p=18;
+  else if(t.indexOf("Поиск в интернете")!==-1)p=34;
+  else if(t.indexOf("Чтение страниц")!==-1)p=48;
+  else if(t.indexOf("Отправка в NVIDIA API")!==-1)p=62;
+  else if(t.indexOf("Получение ответа")!==-1)p=74;
+  else if(t.indexOf("Генерация")!==-1)p=86;
+  else if(t.indexOf("Повтор без Thinking")!==-1)p=66;
+  setLoadProgress(p,t);
+}
+function showStatus(t){
+  var s=document.getElementById("sbar"),st=document.getElementById("stxt");
+  if(t){
+    s.classList.add("v");
+    st.textContent=t;
+    syncLoadWithStatus(t);
+  }else{
+    s.classList.remove("v");
+  }
+}
 function showErr(t){
   var msgs=document.getElementById("msgs");
   var d=document.createElement("div");d.className="err";d.textContent="⚠ "+t;
@@ -1293,6 +1372,7 @@ function send(){
   addMsg("user",text);
   hist.push({role:"user",content:text});
   loading=true;document.getElementById("sbtn").disabled=true;
+  beginLoadProgress("⏳ Подготовка запроса...");
   document.getElementById("sdot").style.background="#ff9500";
   addTyping();ragSrc=[];
 
@@ -1364,6 +1444,7 @@ function send(){
             mbody.textContent=content;
             hist.push({role:"assistant",content:content});
             showStatus("");
+            finishLoadProgress(true,"✅ Всё загружено");
             loading=false;document.getElementById("sbtn").disabled=false;
             document.getElementById("sdot").style.background="#76b900";
             console.log("Stream done, content len:",content.length,"think len:",think.length);
@@ -1385,7 +1466,7 @@ function send(){
               var delta=j.choices&&j.choices[0]&&j.choices[0].delta;
               if(delta){
                 if(delta.reasoning_content){think+=delta.reasoning_content;thblk.style.display="";thTxt.textContent=think}
-                if(delta.content!=null&&delta.content!==""){content+=delta.content;mbody.textContent=content;showStatus("✍️ Генерация...")}
+                if(delta.content!=null&&delta.content!==""){content+=delta.content;mbody.textContent=content;showStatus("✍️ Генерация...");bumpLoadProgress(0.7,"✍️ Генерация ответа...")}
               }
             }catch(e){}
           }
@@ -1401,6 +1482,7 @@ function send(){
       if(e.name==="AbortError"||msg.indexOf("abort")!==-1){
         msg="⏱ Таймаут: сервер не ответил. Попробуйте ещё раз или отключите Think.";
       }
+      finishLoadProgress(false,"⚠ Ошибка загрузки");
       remTyping();showStatus("");showErr(msg);
       loading=false;document.getElementById("sbtn").disabled=false;
       document.getElementById("sdot").style.background="#76b900";
@@ -1618,6 +1700,7 @@ loadProjects();
 renderProjects();
 applyProjectState(getActiveProject());
 openProjectsPanel();
+paintLoadProgress();
 // Auto-save state periodically and on close
 setInterval(saveCurrentState,10000);
 window.addEventListener("beforeunload",saveCurrentState);
