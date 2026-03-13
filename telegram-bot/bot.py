@@ -86,6 +86,11 @@ def get_user(uid: int) -> dict:
             "think_on": True,
             "active_slot": "milean",
             "slots": {},  # {slot_id: {name, text}}
+            "project_name": "",
+            "project_token": "",
+            "last_response": "",
+            "last_thinking": "",
+            "last_query": "",
         }
     return users[uid]
 
@@ -529,6 +534,8 @@ async def cmd_connect(msg: Message):
         u["chunks"] = data.get("chunks", [])
         u["files"] = data.get("files", [])
         u["hist"] = data.get("hist", [])
+        u["project_name"] = data.get("name", "Web Project")
+        u["project_token"] = token
 
         proj_name = data.get("name", "Web Project")
         files_count = len(u["files"])
@@ -683,17 +690,52 @@ async def handle_message(msg: Message, state: FSMContext):
         if len(u["hist"]) > MAX_HISTORY * 2:
             u["hist"] = u["hist"][-MAX_HISTORY * 2:]
 
-        # Format response
-        response = ""
-        if thinking and u["think_on"]:
-            think_short = thinking[:500] + "..." if len(thinking) > 500 else thinking
-            response += f"<blockquote>💭 <b>Размышление:</b>\n{_escape(think_short)}</blockquote>\n\n"
-
-        response += content
-
-        # Send response (split if too long)
+        # Save to user for file generation
         await status_msg.delete()
-        await _send_long(msg.chat.id, response, msg.message_id)
+
+        # Short preview in chat + full response as file
+        preview = content[:300].replace("<", "&lt;").replace(">", "&gt;")
+        if len(content) > 300:
+            preview += "..."
+
+        # Thinking block
+        think_text = ""
+        if thinking and u["think_on"]:
+            think_short = thinking[:300] + "..." if len(thinking) > 300 else thinking
+            think_text = f"💭 <b>Размышление:</b>\n<blockquote>{_escape(think_short)}</blockquote>\n\n"
+
+        # Send preview + file buttons
+        preview_msg = think_text + f"📄 <b>Ответ:</b>\n{preview}\n\n⬇️ Скачайте полный ответ:"
+        file_kb = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="📄 TXT", callback_data=f"dl_txt_{msg.message_id}"),
+                InlineKeyboardButton(text="📝 DOCX", callback_data=f"dl_docx_{msg.message_id}"),
+                InlineKeyboardButton(text="📕 PDF", callback_data=f"dl_pdf_{msg.message_id}"),
+            ],
+            [
+                InlineKeyboardButton(text="💬 Показать в чате", callback_data=f"dl_chat_{msg.message_id}"),
+            ]
+        ])
+
+        # Store response for download
+        u["last_response"] = content
+        u["last_thinking"] = thinking or ""
+        u["last_query"] = query
+
+        try:
+            await bot.send_message(
+                msg.chat.id, preview_msg,
+                parse_mode=ParseMode.HTML,
+                reply_to_message_id=msg.message_id,
+                reply_markup=file_kb
+            )
+        except:
+            await bot.send_message(
+                msg.chat.id,
+                f"📄 Ответ готов ({len(content)} симв.)\n⬇️ Скачайте полный ответ:",
+                reply_to_message_id=msg.message_id,
+                reply_markup=file_kb
+            )
 
     except Exception as e:
         log.error(f"Message handling error: {e}")
@@ -735,6 +777,144 @@ async def cb_clear_instr(cb: CallbackQuery):
     await cb.message.edit_reply_markup(reply_markup=get_main_keyboard(u))
 
 
+# ─── DOWNLOAD HANDLERS ───
+@router.callback_query(F.data.startswith("dl_txt_"))
+async def cb_dl_txt(cb: CallbackQuery):
+    u = get_user(cb.from_user.id)
+    content = u.get("last_response", "")
+    if not content:
+        await cb.answer("❌ Нет ответа для скачивания")
+        return
+    await cb.answer("📄 Генерация TXT...")
+    thinking = u.get("last_thinking", "")
+    query = u.get("last_query", "")
+    full = ""
+    if query:
+        full += f"ВОПРОС:\n{query}\n\n{'='*60}\n\n"
+    if thinking:
+        full += f"РАЗМЫШЛЕНИЕ:\n{thinking}\n\n{'='*60}\n\n"
+    full += f"ОТВЕТ:\n{content}"
+    buf = BytesIO(full.encode("utf-8"))
+    buf.name = "milean_response.txt"
+    buf.seek(0)
+    await bot.send_document(cb.message.chat.id, types.BufferedInputFile(buf.read(), filename="milean_response.txt"), caption="📄 Ответ MILEAN (TXT)")
+
+
+@router.callback_query(F.data.startswith("dl_docx_"))
+async def cb_dl_docx(cb: CallbackQuery):
+    u = get_user(cb.from_user.id)
+    content = u.get("last_response", "")
+    if not content:
+        await cb.answer("❌ Нет ответа для скачивания")
+        return
+    await cb.answer("📝 Генерация DOCX...")
+    try:
+        from docx import Document as DocxDocument
+        from docx.shared import Pt, RGBColor
+        doc = DocxDocument()
+        # Title
+        title = doc.add_heading("MILEAN — Ответ", level=1)
+        # Query
+        query = u.get("last_query", "")
+        if query:
+            doc.add_heading("Вопрос", level=2)
+            doc.add_paragraph(query)
+        # Thinking
+        thinking = u.get("last_thinking", "")
+        if thinking:
+            doc.add_heading("Размышление", level=2)
+            p = doc.add_paragraph(thinking)
+            for run in p.runs:
+                run.font.color.rgb = RGBColor(128, 128, 128)
+                run.font.size = Pt(9)
+        # Answer
+        doc.add_heading("Ответ", level=2)
+        for para in content.split("\n"):
+            if para.strip():
+                doc.add_paragraph(para)
+        buf = BytesIO()
+        doc.save(buf)
+        buf.seek(0)
+        await bot.send_document(cb.message.chat.id, types.BufferedInputFile(buf.read(), filename="milean_response.docx"), caption="📝 Ответ MILEAN (DOCX)")
+    except Exception as e:
+        await cb.message.answer(f"❌ Ошибка генерации DOCX: {e}")
+
+
+@router.callback_query(F.data.startswith("dl_pdf_"))
+async def cb_dl_pdf(cb: CallbackQuery):
+    u = get_user(cb.from_user.id)
+    content = u.get("last_response", "")
+    if not content:
+        await cb.answer("❌ Нет ответа для скачивания")
+        return
+    await cb.answer("📕 Генерация PDF...")
+    # Generate PDF as TXT fallback (simple approach)
+    thinking = u.get("last_thinking", "")
+    query = u.get("last_query", "")
+    full = ""
+    if query:
+        full += f"ВОПРОС:\n{query}\n\n{'='*60}\n\n"
+    if thinking:
+        full += f"РАЗМЫШЛЕНИЕ:\n{thinking}\n\n{'='*60}\n\n"
+    full += f"ОТВЕТ:\n{content}"
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+        from reportlab.lib.units import mm
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
+        import tempfile
+        # Try to use a font that supports Cyrillic
+        buf = BytesIO()
+        doc_pdf = SimpleDocTemplate(buf, pagesize=A4)
+        styles = getSampleStyleSheet()
+        story = [Paragraph("MILEAN — Ответ", styles['Title'])]
+        for line in full.split("\n"):
+            if line.strip():
+                story.append(Paragraph(line.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;"), styles['Normal']))
+            else:
+                story.append(Spacer(1, 3*mm))
+        doc_pdf.build(story)
+        buf.seek(0)
+        await bot.send_document(cb.message.chat.id, types.BufferedInputFile(buf.read(), filename="milean_response.pdf"), caption="📕 Ответ MILEAN (PDF)")
+    except ImportError:
+        # Fallback: send as TXT with .pdf note
+        buf = BytesIO(full.encode("utf-8"))
+        await bot.send_document(cb.message.chat.id, types.BufferedInputFile(buf.read(), filename="milean_response.txt"), caption="📄 PDF библиотека не установлена, отправляю TXT")
+
+
+@router.callback_query(F.data.startswith("dl_chat_"))
+async def cb_dl_chat(cb: CallbackQuery):
+    u = get_user(cb.from_user.id)
+    content = u.get("last_response", "")
+    if not content:
+        await cb.answer("❌ Нет ответа")
+        return
+    await cb.answer("💬 Отправка в чат...")
+    await _send_long(cb.message.chat.id, content)
+
+
+@router.callback_query(F.data == "show_project")
+async def cb_show_project(cb: CallbackQuery):
+    u = get_user(cb.from_user.id)
+    proj_name = u.get("project_name", "—")
+    files_info = ""
+    if u["files"]:
+        files_info = "\n".join(f"  📄 {f['name']} ({f.get('chunks',0)} чанков)" for f in u["files"])
+    else:
+        files_info = "  нет файлов"
+    await cb.answer()
+    await cb.message.answer(
+        f"📂 <b>Проект: {proj_name}</b>\n\n"
+        f"📎 Файлы:\n{files_info}\n\n"
+        f"🧩 Чанков: {len(u['chunks'])}\n"
+        f"📝 Инструкция: {'✅' if u['instr'] else '❌'}\n"
+        f"💬 История: {len(u['hist'])//2} сообщ.",
+        parse_mode=ParseMode.HTML
+    )
+
+
 @router.callback_query(F.data == "show_settings")
 async def cb_settings(cb: CallbackQuery):
     await cb.answer()
@@ -752,8 +932,10 @@ def get_main_keyboard(u: dict) -> InlineKeyboardMarkup:
     web_label = "🌐 Web: ✅" if u["web_on"] else "🌐 Web: ❌"
     think_label = "🧠 Think: ✅" if u["think_on"] else "🧠 Think: ❌"
     instr_label = "⚖️ MILEAN ✅" if u["active_slot"] == "milean" else "⚖️ MILEAN"
+    proj_name = u.get("project_name", "")
+    proj_label = f"📂 {proj_name}" if proj_name else "📂 Нет проекта"
 
-    return InlineKeyboardMarkup(inline_keyboard=[
+    rows = [
         [
             InlineKeyboardButton(text=web_label, callback_data="toggle_web"),
             InlineKeyboardButton(text=think_label, callback_data="toggle_think"),
@@ -763,9 +945,11 @@ def get_main_keyboard(u: dict) -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="🗑 Очистить", callback_data="clear_instr"),
         ],
         [
+            InlineKeyboardButton(text=proj_label, callback_data="show_project"),
             InlineKeyboardButton(text="⚙️ Статус", callback_data="show_settings"),
-        ]
-    ])
+        ],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 # ─── HELPERS ───
