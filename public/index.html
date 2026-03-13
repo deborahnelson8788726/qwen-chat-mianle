@@ -240,10 +240,10 @@ body.light .sdot{background:var(--ac);box-shadow:0 0 6px var(--ac)}
 <label onclick="ddgMode=!ddgMode;this.querySelector('.ftog').classList.toggle('on',ddgMode);localStorage.setItem('milean_ddg',ddgMode?'1':'0')" style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:10px;font-family:'Space Mono',monospace;color:var(--t2);padding:4px 0"><span class="ftog" id="ddgTog">✓</span> 🦆 DuckDuckGo</label>
 </div>
 <div id="instrBar">
-<div class="ihead"><label>⚖️ MILEAN — Инструкция</label><div style="display:flex;gap:6px"><button id="instrEditBtn" onclick="toggleInstrEdit()" style="background:var(--s2);border:1px solid var(--bd);border-radius:5px;padding:2px 10px;font-size:10px;font-family:'Space Mono',monospace;color:var(--t2);cursor:pointer">✏️ Edit</button><button id="instrResetBtn" onclick="resetInstr()" style="background:var(--s2);border:1px solid var(--bd);border-radius:5px;padding:2px 10px;font-size:10px;font-family:'Space Mono',monospace;color:var(--t2);cursor:pointer;display:none">↩ Reset</button><button onclick="togInstr()" style="background:none;border:none;color:var(--t2);cursor:pointer;font-size:16px">✕</button></div></div>
+<div class="ihead"><label>⚖️ MILEAN — Инструкция</label><div style="display:flex;gap:6px"><button id="instrTogBtn" onclick="toggleInstrActive()" style="background:var(--ac);border:none;border-radius:5px;padding:2px 10px;font-size:10px;font-family:'Space Mono',monospace;color:var(--bg);cursor:pointer;font-weight:700">✅ ВКЛ</button><button id="instrEditBtn" onclick="toggleInstrEdit()" style="background:var(--s2);border:1px solid var(--bd);border-radius:5px;padding:2px 10px;font-size:10px;font-family:'Space Mono',monospace;color:var(--t2);cursor:pointer">✏️ Edit</button><button id="instrResetBtn" onclick="resetInstr()" style="background:var(--s2);border:1px solid var(--bd);border-radius:5px;padding:2px 10px;font-size:10px;font-family:'Space Mono',monospace;color:var(--t2);cursor:pointer;display:none">↩ Reset</button><button onclick="togInstr()" style="background:none;border:none;color:var(--t2);cursor:pointer;font-size:16px">✕</button></div></div>
 <div id="instrPreview" style="background:var(--s);border:1px solid var(--bd);border-radius:7px;color:var(--t2);font-size:11px;padding:10px 12px;line-height:1.6;max-height:300px;overflow-y:auto;white-space:pre-wrap;word-break:break-word"></div>
 <textarea id="instrTxt" style="display:none;background:var(--s);border:1px solid var(--ac);border-radius:7px;color:var(--t);font-family:'Syne',sans-serif;font-size:12px;padding:10px 12px;outline:none;resize:vertical;min-height:200px;max-height:400px;line-height:1.5;width:100%" oninput="updDot()"></textarea>
-<div class="ifoot"><span style="color:var(--ac)">✅ Всегда активна</span><span style="font-size:9px;font-family:'Space Mono',monospace;color:var(--t2)">Отправляется с каждым сообщением</span></div>
+<div class="ifoot"><span id="instrStatus" style="color:var(--ac)">✅ Активна</span><span style="font-size:9px;font-family:'Space Mono',monospace;color:var(--t2)">Отправляется с каждым сообщением</span></div>
 </div>
 <div id="projPanel">
 <div class="pj-head"><h3>📂 Проекты</h3><button class="pj-add" onclick="createProject()" title="Новый проект">+</button></div>
@@ -313,7 +313,7 @@ window.addEventListener("unhandledrejection",function(e){
 });
 
 var API="/api/proxy",MDL="qwen/qwen3.5-397b-a17b";
-var hist=[],loading=false,files=[],ragSrc=[],allOn=true,thinkOn=true,txtMode=false,docMode=false,webMode=false,ddgMode=false;
+var hist=[],loading=false,files=[],ragSrc=[],allOn=true,thinkOn=true,txtMode=false,docMode=false,webMode=false,ddgMode=false,instrOn=true;
 // Restore web mode + pplx key
 (function(){
   if(localStorage.getItem("milean_web")==="1"){webMode=true;var wt=document.getElementById("webTog");if(wt)wt.classList.add("on")}
@@ -322,6 +322,22 @@ var hist=[],loading=false,files=[],ragSrc=[],allOn=true,thinkOn=true,txtMode=fal
   if(!sk){sk="pplx-9OzbY"+"g3TpVEMhK4RAJ49WVI"+"krqR1NufFsKNPu"+"oCenUc7xUMe";localStorage.setItem("milean_pplx",sk)}
   var el=document.getElementById("pplxKey");if(el)el.value=sk
 })();
+function toggleInstrActive(){
+  instrOn=!instrOn;
+  var btn=document.getElementById("instrTogBtn");
+  var st=document.getElementById("instrStatus");
+  var prev=document.getElementById("instrPreview");
+  var ta=document.getElementById("instrTxt");
+  if(instrOn){
+    btn.textContent="✅ ВКЛ";btn.style.background="var(--ac)";btn.style.color="var(--bg)";
+    st.textContent="✅ Активна";st.style.color="var(--ac)";
+    if(prev)prev.style.opacity="1";if(ta)ta.style.opacity="1";
+  }else{
+    btn.textContent="⛔ ВЫКЛ";btn.style.background="var(--bd)";btn.style.color="var(--t2)";
+    st.textContent="⛔ Отключена";st.style.color="#f55";
+    if(prev)prev.style.opacity=".4";if(ta)ta.style.opacity=".4";
+  }
+}
 function toggleWeb(lbl){
   if(!webMode){
     var pk=document.getElementById("pplxKey").value.trim();
@@ -1081,8 +1097,10 @@ function send(){
 
   // Build system parts
   var sysParts=[];
-  var instr=document.getElementById("instrTxt").value.trim();
-  if(instr)sysParts.push(instr);
+  if(instrOn){
+    var instr=document.getElementById("instrTxt").value.trim();
+    if(instr)sysParts.push(instr);
+  }
 
   var enabledFiles=files.filter(function(f){return f.enabled!==false});
   var enCount=enabledFiles.length;
