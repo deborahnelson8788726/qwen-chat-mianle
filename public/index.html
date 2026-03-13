@@ -725,7 +725,8 @@ function renderProjects(){
     el.innerHTML='<span class="pj-icon">📁</span>'+
       '<div class="pj-info"><div class="pj-name" ondblclick="event.stopPropagation();renameProject(\''+p.id+'\')">'+p.name+'</div>'+
       '<div class="pj-meta">📎 '+ec+'/'+fc+' файл. · 💬 '+mc+' сообщ.</div></div>'+
-      '<button class="pj-del" onclick="event.stopPropagation();deleteProject(\''+p.id+'\')" title="Удалить">✕</button>';
+      '<div style="display:flex;gap:2px;align-items:center"><button class="pj-ren" onclick="event.stopPropagation();renameProject(\''+p.id+'\')" title="Переименовать" style="background:none;border:none;color:var(--t2);cursor:pointer;font-size:13px;padding:2px 4px">✏️</button>'+
+      '<button class="pj-del" onclick="event.stopPropagation();deleteProject(\''+p.id+'\')" title="Удалить">✕</button></div>';
     list.appendChild(el);
   }
 }
