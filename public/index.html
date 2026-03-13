@@ -379,11 +379,32 @@ body.light .sdot{background:var(--ac);box-shadow:0 0 6px var(--ac)}
 var PIN_CODE="321345";
 var pinVal="";
 var pinUnlocked=sessionStorage.getItem("milean_unlocked")==="1";
+var PIN_TIMEOUT=15*60*1000; // 15 minutes
+var pinTimer=null;
+
+function pinResetTimer(){
+  clearTimeout(pinTimer);
+  if(!pinUnlocked)return;
+  pinTimer=setTimeout(function(){pinLock()},PIN_TIMEOUT);
+}
+
+function pinLock(){
+  pinUnlocked=false;pinVal="";
+  sessionStorage.removeItem("milean_unlocked");
+  var ps=document.getElementById("pinScreen");
+  ps.style.transition="opacity .4s";ps.style.opacity="0";ps.style.display="flex";
+  setTimeout(function(){ps.style.opacity="1"},10);
+  document.body.classList.add("app-hidden");
+  pinUpdateDots();
+  document.getElementById("pinErr").textContent="⏰ Сессия истекла";
+  setTimeout(function(){document.getElementById("pinErr").textContent=""},3000);
+}
 
 function pinInit(){
   if(pinUnlocked){
     document.getElementById("pinScreen").style.display="none";
     document.body.classList.remove("app-hidden");
+    pinResetTimer();
     return;
   }
   document.body.classList.add("app-hidden");
@@ -401,6 +422,7 @@ function pinInput(n){
         var ps=document.getElementById("pinScreen");
         ps.style.transition="opacity .4s";ps.style.opacity="0";
         setTimeout(function(){ps.style.display="none";document.body.classList.remove("app-hidden")},400);
+        pinResetTimer();
       } else {
         document.getElementById("pinErr").textContent="Неверный PIN-код";
         var dots=document.querySelectorAll(".pin-dot");
@@ -425,6 +447,11 @@ function pinUpdateDots(){
     if(i<pinVal.length)d.classList.add("filled");else d.classList.remove("filled");
   }
 }
+
+// Activity tracking — reset timer on any interaction
+["mousemove","mousedown","keydown","touchstart","scroll","click"].forEach(function(evt){
+  document.addEventListener(evt,function(){if(pinUnlocked)pinResetTimer()},true);
+});
 
 // Keyboard support for PIN
 document.addEventListener("keydown",function(e){
