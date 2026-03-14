@@ -1468,7 +1468,12 @@ function send(){
               var j=JSON.parse(dd);
               var delta=j.choices&&j.choices[0]&&j.choices[0].delta;
               if(delta){
-                if(delta.reasoning_content){think+=delta.reasoning_content;thblk.style.display="";thTxt.textContent=think}
+                if(delta.reasoning_content){
+                  think+=delta.reasoning_content;
+                  thblk.style.display="";
+                  thTxt.textContent=think;
+                  thblk.scrollTop=thblk.scrollHeight;
+                }
                 if(delta.content!=null&&delta.content!==""){content+=delta.content;mbody.textContent=content;showStatus("✍️ Генерация...");bumpLoadProgress(0.7,"✍️ Генерация ответа...")}
               }
             }catch(e){}
