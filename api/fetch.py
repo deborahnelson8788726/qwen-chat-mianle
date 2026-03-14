@@ -11,7 +11,10 @@ import ssl
 import urllib.error
 import urllib.parse
 import urllib.request
-from _monitor import capture
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from lib.monitor import capture
 
 try:
     from PyPDF2 import PdfReader

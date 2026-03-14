@@ -2,7 +2,10 @@
 from http.server import BaseHTTPRequestHandler
 import json, urllib.request, urllib.error, ssl, socket, re
 from html.parser import HTMLParser
-from _monitor import capture
+import sys, os
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from lib.monitor import capture
 
 SSL_CTX = ssl._create_unverified_context()
 DDG_HTML = "https://html.duckduckgo.com/html/"

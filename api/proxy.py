@@ -2,7 +2,10 @@
 from http.server import BaseHTTPRequestHandler
 import json, urllib.request, urllib.error, ssl, socket
 import os
-from _monitor import capture
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from lib.monitor import capture
 
 NVIDIA_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
 SSL_CTX = ssl._create_unverified_context()

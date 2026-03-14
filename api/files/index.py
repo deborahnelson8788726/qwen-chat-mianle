@@ -1,8 +1,8 @@
 """GET /api/files — list uploaded files"""
 from http.server import BaseHTTPRequestHandler
 import json, sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from _storage import get_files
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+from lib.storage import get_files
 
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):

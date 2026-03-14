@@ -2,8 +2,11 @@
 from http.server import BaseHTTPRequestHandler
 import json, urllib.request, urllib.error, ssl, socket
 import os
+import sys
 from datetime import datetime, timezone
-from _monitor import capture
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from lib.monitor import capture
 
 PPLX_URL = "https://api.perplexity.ai/chat/completions"
 SSL_CTX = ssl._create_unverified_context()

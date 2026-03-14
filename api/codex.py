@@ -15,11 +15,14 @@ from http.server import BaseHTTPRequestHandler
 import json
 import os
 import re
+import sys
 import time
 import urllib.parse
 import secrets
-from _kv import get_json, set_json
-from _monitor import capture
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from lib.kv import get_json, set_json
+from lib.monitor import capture
 
 QUEUE_DIR = "/tmp/milean_codex_queue"
 _MAX_AGE = 86400 * 7  # 7 days

@@ -53,7 +53,7 @@ class SmokeApiTests(unittest.TestCase):
             self.assertEqual(done["status"], "done")
 
     def test_upload_and_rag_search_smoke(self):
-        storage = load_module(API_DIR / "_storage.py", "storage_mod")
+        storage = load_module(ROOT / "lib" / "storage.py", "storage_mod")
         with tempfile.TemporaryDirectory() as td:
             storage.STORE_DIR = td
             storage.META_FILE = os.path.join(td, "meta.json")

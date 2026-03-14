@@ -27,7 +27,7 @@
 3. В `Environment` задайте переменные из блока выше.
 4. Нажмите Deploy.
 5. После старта проверьте логи: должно быть `MILEAN Bot started! Active bots: ...`.
-6. Проверка API health: `https://milean.vercel.app/api/health`
+6. Проверка API: `https://milean.vercel.app/api/stats`
 
 ## Вариант 2: Railway
 

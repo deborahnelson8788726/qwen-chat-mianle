@@ -1,8 +1,8 @@
 """POST /api/files/toggle-all"""
 from http.server import BaseHTTPRequestHandler
 import json, sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from _storage import toggle_all
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+from lib.storage import toggle_all
 
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):

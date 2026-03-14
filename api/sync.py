@@ -8,10 +8,13 @@ Falls back to /tmp for local/serverless best-effort.
 from http.server import BaseHTTPRequestHandler
 import json
 import os
+import sys
 import urllib.parse
 import time
-from _kv import get_json, set_json, redis_available
-from _monitor import capture
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from lib.kv import get_json, set_json, redis_available
+from lib.monitor import capture
 
 SYNC_DIR = "/tmp/milean_sync"
 _cache = {}

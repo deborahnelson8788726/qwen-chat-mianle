@@ -2,10 +2,8 @@
 from http.server import BaseHTTPRequestHandler
 import json, re, sys, os
 
-# Make sure local api modules (e.g. _storage.py) are importable in serverless runtime.
-sys.path.insert(0, os.path.dirname(__file__))
-
-from _storage import upload_files
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from lib.storage import upload_files
 
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):

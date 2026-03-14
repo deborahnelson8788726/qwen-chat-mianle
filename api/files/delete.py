@@ -2,8 +2,8 @@
 from http.server import BaseHTTPRequestHandler
 import json, sys, os
 from urllib.parse import urlparse, parse_qs
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from _storage import delete_file
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+from lib.storage import delete_file
 
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
