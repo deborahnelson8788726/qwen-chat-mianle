@@ -129,6 +129,7 @@ def get_user(uid: int, bot_id: Optional[int] = None) -> dict:
             "last_response": "",
             "last_thinking": "",
             "last_query": "",
+            "last_codex_task": "",
         }
     return users[key]
 
@@ -429,6 +430,7 @@ async def cmd_help(msg: Message):
         "🗑 /clearfiles — удалить все файлы\n\n"
         "🔗 /connect <i>TOKEN</i> — подключить проект с web\n"
         "🔑 /token — как получить токен\n\n"
+        "🤖 /codex <i>задача</i> — подготовить задачу для Codex\n\n"
         "🌐 /web — вкл/выкл веб-поиск\n"
         "🧠 /think — вкл/выкл режим Think\n"
         "🔄 /clear — очистить историю чата\n"
@@ -725,6 +727,42 @@ async def cmd_token(msg: Message):
         "3. Скопируйте токен\n"
         "4. Отправьте <code>/connect ML-XXXXXXXX</code>\n\n"
         "⚡️ Синхронизируются: инструкция, файлы, история чата",
+        parse_mode=ParseMode.HTML
+    )
+
+
+@router.message(Command("codex"))
+async def cmd_codex(msg: Message):
+    """Prepare and store a task text for Codex workflow."""
+    u = get_user(msg.from_user.id, msg.bot.id)
+    parts = (msg.text or "").split(maxsplit=1)
+    if len(parts) < 2 or not parts[1].strip():
+        last = (u.get("last_codex_task") or "").strip()
+        last_block = ""
+        if last:
+            preview = last[:700] + ("..." if len(last) > 700 else "")
+            last_block = f"\n\n📝 <b>Последняя сохранённая задача:</b>\n<blockquote>{_escape(preview)}</blockquote>"
+        await msg.answer(
+            "🤖 <b>Codex-задача</b>\n\n"
+            "Формат команды:\n"
+            "<code>/codex что нужно сделать</code>\n\n"
+            "Пример:\n"
+            "<code>/codex исправь 500 ошибку в /api/fetch и задеплой</code>\n\n"
+            "ℹ️ Telegram-бот не может напрямую писать в текущий desktop-сеанс Codex, "
+            "но сохранит задачу и вернёт готовый текст для отправки в Codex."
+            f"{last_block}",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    task = parts[1].strip()
+    if len(task) > 3000:
+        task = task[:3000]
+    u["last_codex_task"] = task
+    await msg.answer(
+        "✅ <b>Задача для Codex сохранена</b>\n\n"
+        f"<blockquote>{_escape(task)}</blockquote>\n\n"
+        "Отправьте этот текст в Codex-чате для выполнения.",
         parse_mode=ParseMode.HTML
     )
 
@@ -1221,6 +1259,7 @@ async def set_commands(bot_client: Bot):
         BotCommand(command="panel", description="🎛 Панель управления"),
         BotCommand(command="connect", description="🔗 Подключить проект с web"),
         BotCommand(command="token", description="🔑 Как получить токен"),
+        BotCommand(command="codex", description="🤖 Задача для Codex"),
         BotCommand(command="settings", description="⚙️ Настройки"),
     ]
     await bot_client.set_my_commands(commands)
