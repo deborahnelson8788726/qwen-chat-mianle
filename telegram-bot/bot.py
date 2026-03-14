@@ -40,6 +40,7 @@ MAX_HISTORY = 10
 MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB
 SYNC_API = "https://milean.vercel.app/api/sync"
 CODEX_API = "https://milean.vercel.app/api/codex"
+CODEX_DEFAULT_TOKEN = os.getenv("CODEX_DEFAULT_TOKEN", "").strip().upper()
 CHUNK_SIZE = 500
 RAG_TOP_K = 8
 
@@ -133,6 +134,14 @@ def get_user(uid: int, bot_id: Optional[int] = None) -> dict:
             "last_codex_task": "",
         }
     return users[key]
+
+
+def get_project_token(u: dict) -> str:
+    """Prefer /connect token from chat state; fallback to service-wide token."""
+    token = (u.get("project_token") or "").strip().upper()
+    if token:
+        return token
+    return CODEX_DEFAULT_TOKEN
 
 
 # ─── TEXT EXTRACTION ───
@@ -685,7 +694,7 @@ async def cmd_connect(msg: Message):
     if len(parts) < 2:
         await msg.answer(
             "🔗 <b>Подключение проекта с Web</b>\n\n"
-            "Использование: <code>/connect ML-XXXXXXXX</code>\n\n"
+            "Использование: <code>/connect TOKEN</code>\n\n"
             "Как получить токен:\n"
             "1. Откройте milean.vercel.app\n"
             "2. В разделе «Проекты» нажмите 📤 рядом с проектом\n"
@@ -759,13 +768,13 @@ async def cmd_token(msg: Message):
     """Show info about how to get token"""
     await msg.answer(
         "🔑 <b>Токен проекта</b>\n\n"
-        "Каждый проект на milean.vercel.app имеет уникальный токен "
-        "формата <code>ML-XXXXXXXX</code>\n\n"
+        "Каждый проект на milean.vercel.app имеет уникальный токен.\n"
+        "Формат может отличаться (например <code>ML-XXXXXXXX</code> или UUID).\n\n"
         "📤 Чтобы перенести проект в Telegram:\n"
         "1. Откройте <b>Проекты</b> на сайте\n"
         "2. Нажмите 📤 рядом с нужным проектом\n"
         "3. Скопируйте токен\n"
-        "4. Отправьте <code>/connect ML-XXXXXXXX</code>\n\n"
+        "4. Отправьте <code>/connect TOKEN</code>\n\n"
         "⚡️ Синхронизируются: инструкция, файлы, история чата",
         parse_mode=ParseMode.HTML
     )
@@ -775,11 +784,11 @@ async def cmd_token(msg: Message):
 async def cmd_codex(msg: Message):
     """Send task to Codex relay queue for current connected project."""
     u = get_user(msg.from_user.id, msg.bot.id)
-    token = (u.get("project_token") or "").strip().upper()
+    token = get_project_token(u)
     if not token:
         await msg.answer(
             "❌ <b>Сначала подключите проект:</b>\n"
-            "<code>/connect ML-XXXXXXXX</code>\n\n"
+            "<code>/connect TOKEN</code>\n\n"
             "После подключения команда /codex будет отправлять задачи "
             "в общую очередь Codex relay.",
             parse_mode=ParseMode.HTML
@@ -815,11 +824,11 @@ async def cmd_codex(msg: Message):
 async def cmd_codexstatus(msg: Message):
     """Show Codex relay queue status for connected project."""
     u = get_user(msg.from_user.id, msg.bot.id)
-    token = (u.get("project_token") or "").strip().upper()
+    token = get_project_token(u)
     if not token:
         await msg.answer(
             "❌ Проект не подключён.\n"
-            "Сначала: <code>/connect ML-XXXXXXXX</code>",
+            "Сначала: <code>/connect TOKEN</code>",
             parse_mode=ParseMode.HTML
         )
         return
