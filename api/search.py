@@ -5,6 +5,42 @@ import json, urllib.request, urllib.error, ssl, socket
 PPLX_URL = "https://api.perplexity.ai/chat/completions"
 SSL_CTX = ssl._create_unverified_context()
 
+
+def _clean_domains(raw):
+    if not isinstance(raw, list):
+        return []
+    out = []
+    seen = set()
+    for x in raw:
+        if not isinstance(x, str):
+            continue
+        d = x.strip().lower()
+        if not d:
+            continue
+        d = d.replace("https://", "").replace("http://", "").split("/")[0]
+        if d.startswith("www."):
+            d = d[4:]
+        if not d or "." not in d or d in seen:
+            continue
+        seen.add(d)
+        out.append(d)
+    return out[:6]
+
+
+def _pplx_request(key, payload_obj):
+    payload = json.dumps(payload_obj, ensure_ascii=False).encode("utf-8")
+    req = urllib.request.Request(
+        PPLX_URL, data=payload,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {key}",
+            "Accept": "application/json"
+        },
+        method="POST"
+    )
+    resp = urllib.request.urlopen(req, timeout=30, context=SSL_CTX)
+    return json.loads(resp.read().decode("utf-8"))
+
 class handler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
         self.send_response(200)
@@ -26,7 +62,8 @@ class handler(BaseHTTPRequestHandler):
             self._json(400, {"error": "missing key or query"})
             return
 
-        payload = json.dumps({
+        domains = _clean_domains(d.get("domains", []))
+        payload_obj = {
             "model": "sonar",
             "messages": [
                 {"role": "system", "content": "Ты помощник для веб-поиска. Отвечай строго по найденным источникам, без догадок. Обязательно указывай факты, даты и ссылки. Если данных недостаточно — так и скажи."},
@@ -35,21 +72,20 @@ class handler(BaseHTTPRequestHandler):
             "max_tokens": 1024,
             "temperature": 0.2,
             "return_citations": True
-        }, ensure_ascii=False).encode("utf-8")
-
-        req = urllib.request.Request(
-            PPLX_URL, data=payload,
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {key}",
-                "Accept": "application/json"
-            },
-            method="POST"
-        )
+        }
+        if domains:
+            payload_obj["search_domain_filter"] = domains
 
         try:
-            resp = urllib.request.urlopen(req, timeout=30, context=SSL_CTX)
-            data = json.loads(resp.read().decode("utf-8"))
+            try:
+                data = _pplx_request(key, payload_obj)
+            except urllib.error.HTTPError:
+                # Fallback if provider rejects domain filter field for a model/plan.
+                if "search_domain_filter" in payload_obj:
+                    payload_obj.pop("search_domain_filter", None)
+                    data = _pplx_request(key, payload_obj)
+                else:
+                    raise
             content = ""
             citations = []
             if "choices" in data and len(data["choices"]) > 0:

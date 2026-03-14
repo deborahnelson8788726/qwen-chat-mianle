@@ -1365,6 +1365,36 @@ function addTyping(){
 }
 function remTyping(){var t=document.getElementById("typ");if(t)t.remove()}
 
+var LEGAL_SOURCE_DOMAINS=[
+  "consultant.ru",
+  "garant.ru",
+  "publication.pravo.gov.ru",
+  "pravo.gov.ru",
+  "duma.gov.ru",
+  "ksrf.ru",
+  "vsrf.ru"
+];
+
+function extractDomainsFromText(txt){
+  var out=[],seen={};
+  if(!txt)return out;
+  var re=/((?:https?:\/\/)?(?:www\.)?[a-z0-9][a-z0-9.-]+\.[a-z]{2,})(?:\/[^\s]*)?/ig,m;
+  while((m=re.exec(txt))){
+    var d=(m[1]||"").toLowerCase().replace(/^https?:\/\//,"").replace(/^www\./,"").split("/")[0].trim();
+    if(!d||d.indexOf(".")===-1||seen[d])continue;
+    seen[d]=1;out.push(d);
+  }
+  return out;
+}
+
+function getLegalDomainsFromInstruction(instrText){
+  var out=[],seen={},fromInstr=extractDomainsFromText(instrText||"");
+  function add(d){if(!d||seen[d])return;seen[d]=1;out.push(d)}
+  for(var i=0;i<fromInstr.length;i++) add(fromInstr[i]);
+  for(var j=0;j<LEGAL_SOURCE_DOMAINS.length;j++) add(LEGAL_SOURCE_DOMAINS[j]);
+  return out.slice(0,5);
+}
+
 function send(){
   if(loading)return;
   var key=document.getElementById("apiKey").value.trim();
@@ -1501,10 +1531,14 @@ function send(){
 
   // Build system parts
   var sysParts=[];
+  var activeInstrText="";
   if(instrOn){
     var apInstr=getActiveProject();
     var instr=(apInstr&&apInstr.instr?apInstr.instr:"").trim();
-    if(instr)sysParts.push(instr);
+    if(instr){
+      activeInstrText=instr;
+      sysParts.push(instr);
+    }
   }
 
   var enabledFiles=files.filter(function(f){return f.enabled!==false});
@@ -1530,21 +1564,24 @@ function send(){
         sysParts.push("У тебя есть доступ к базе знаний пользователя. Загруженные файлы: "+fnames.join(", ")+". Поиск не нашёл релевантных фрагментов по запросу. Если пользователь спрашивает про содержимое файла — сообщи что файл загружен и предложи задать более конкретный вопрос по содержимому документа.");
       }
       showAnalysis(false);
-      doWebThenSend(sysParts,text);
+      doWebThenSend(sysParts,text,activeInstrText);
     }).catch(function(e){
       console.error("Local RAG error:",e);
       showAnalysis(false);
-      doWebThenSend(sysParts,text);
+      doWebThenSend(sysParts,text,activeInstrText);
     });
   } else {
-    doWebThenSend(sysParts,text);
+    doWebThenSend(sysParts,text,activeInstrText);
   }
 
-  function doWebThenSend(parts,query){
+  function doWebThenSend(parts,query,instrText){
     var searches=[],citations=[],seenCitations={};
     var q=(query||"").toLowerCase();
     var forceWeb=/\b(today|latest|news|price|cost|buy|availability|release|launched|202[4-9])\b|сегодня|сейчас|актуаль|последн|новост|цена|ценник|сколько стоит|стоим|купить|наличие|вышел|релиз|парагва|магазин|где купить|самый выгод/i.test(q);
     var priceIntent=/\b(price|cost|buy|cheapest|deal)\b|цена|ценник|сколько стоит|купить|где купить|самый выгод|дешевле|наличие/i.test(q);
+    var legalIntent=/\b(гк|ук|гпк|апк|нк|коап|фз|ст\\.?)\b|закон|поправ|изменени|редакц|пленум|постановлен|правов|юрид|судеб|consultant|garant|права/i.test(q);
+    var legalDomains=legalIntent?getLegalDomainsFromInstruction(instrText):[];
+    if(legalIntent) forceWeb=true;
     var gotWebData=false;
     if(forceWeb){
       parts.push(
@@ -1553,6 +1590,16 @@ function send(){
         "Не утверждай, что товар или модель не существует, если в источниках есть противоположные данные. " +
         "Если данных недостаточно или они противоречат — прямо укажи это и приведи ссылки."
       );
+      parts.push("ТЕХНИЧЕСКОЕ УТОЧНЕНИЕ: система уже выполнила веб-поиск и передала тебе результаты. Не пиши, что у тебя нет доступа к интернету в этом ответе.");
+      if(legalIntent){
+        parts.push(
+          "ЮРИДИЧЕСКИЙ РЕЖИМ: для правовых вопросов приоритетны официальные и профильные правовые источники. " +
+          "Укажи дату проверки и ссылки на источники, где видны актуальные редакции/поправки."
+        );
+        if(legalDomains.length){
+          parts.push("ПРИОРИТЕТНЫЕ ЮР-ИСТОЧНИКИ ДЛЯ ПРОВЕРКИ: "+legalDomains.join(", "));
+        }
+      }
       if(priceIntent){
         parts.push(
           "ФОРМАТ ДЛЯ ЗАПРОСОВ О ЦЕНЕ: выдай краткую таблицу: магазин | модель | цена | валюта | дата/время | ссылка. " +
@@ -1575,7 +1622,7 @@ function send(){
         var u=citations[i];
         if(/^https?:\/\//i.test(u))urls.push(u);
       }
-      urls=urls.slice(0,3);
+      urls=urls.slice(0,legalIntent?5:3);
       if(!urls.length){
         if(forceWeb&&!gotWebData){
           parts.push("Не удалось получить релевантные данные из интернет-поиска по этому запросу. " +
@@ -1610,14 +1657,20 @@ function send(){
     var pplxKey=document.getElementById("pplxKey").value.trim();
     var usePplx=webMode||(forceWeb&&!!pplxKey);
     var useDdg=ddgMode||forceWeb;
+    var pplxDomains=(legalIntent&&legalDomains.length)?legalDomains:[];
 
     if(usePplx){
       var pplxKey=document.getElementById("pplxKey").value.trim();
       if(pplxKey){
         searches.push(
-          fetch("/api/search",{method:"POST",headers:{"Content-Type":"application/json"},
-            body:JSON.stringify({key:pplxKey,query:query})
-          }).then(function(r){return r.json()}).then(function(data){
+          (function(){
+            var req={key:pplxKey,query:query};
+            if(pplxDomains.length)req.domains=pplxDomains;
+            return fetch("/api/search",{method:"POST",headers:{"Content-Type":"application/json"},
+              body:JSON.stringify(req)
+            });
+          })()
+          .then(function(r){return r.json()}).then(function(data){
             if(data.content){
               gotWebData=true;
               var webCtx="РЕЗУЛЬТАТЫ ВЕБ-ПОИСКА (Perplexity):\n"+data.content;
@@ -1650,6 +1703,33 @@ function send(){
           }
         }).catch(function(e){console.error("DDG error:",e)})
       );
+      if(legalIntent&&legalDomains.length){
+        for(var di=0;di<legalDomains.length&&di<3;di++){
+          (function(domain){
+            var q2=query;
+            if(!/поправ|изменени|редакц|на сегодня|действующ/i.test(q2)){
+              q2+=" последняя редакция";
+            }
+            q2+=" site:"+domain;
+            searches.push(
+              fetch("/api/ddg",{method:"POST",headers:{"Content-Type":"application/json"},
+                body:JSON.stringify({query:q2})
+              }).then(function(r){return r.json()}).then(function(data){
+                if(data.content){
+                  gotWebData=true;
+                  var ddgLegalCtx="РЕЗУЛЬТАТЫ ЮР-ПОИСКА (site:"+domain+"):\n"+data.content;
+                  if(data.citations&&data.citations.length){
+                    ddgLegalCtx+="\n\nСсылки:\n"+data.citations.map(function(u,i){return "["+(i+1)+"] "+u}).join("\n");
+                    addCitations(data.citations);
+                  }
+                  parts.push(ddgLegalCtx);
+                  console.log("DDG legal search added for",domain);
+                }
+              }).catch(function(e){console.error("DDG legal error:",domain,e)})
+            );
+          })(legalDomains[di]);
+        }
+      }
     }
     if(!searches.length) return doSend(parts);
     showStatus("🌐 Поиск в интернете...");

@@ -18,7 +18,7 @@ except Exception:  # pragma: no cover
     PdfReader = None
 
 SSL_CTX = ssl._create_unverified_context()
-MAX_URLS = 3
+MAX_URLS = 5
 MAX_BODY_BYTES = 900_000
 MAX_TEXT_CHARS = 9_000
 TIMEOUT = 15
