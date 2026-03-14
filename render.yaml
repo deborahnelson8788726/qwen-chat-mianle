@@ -1,0 +1,14 @@
+services:
+  - type: worker
+    name: milean-telegram-bot
+    env: docker
+    dockerContext: .
+    dockerfilePath: ./telegram-bot/Dockerfile
+    autoDeploy: true
+    envVars:
+      - key: BOT_TOKENS
+        sync: false
+      - key: NVIDIA_API_KEY
+        sync: false
+      - key: PPLX_API_KEY
+        sync: false

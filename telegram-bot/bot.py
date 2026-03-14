@@ -64,6 +64,18 @@ def _collect_bot_tokens() -> list[str]:
 
 BOT_TOKENS = _collect_bot_tokens()
 
+
+def _validate_env() -> None:
+    missing = []
+    if not BOT_TOKENS:
+        missing.append("BOT_TOKEN/BOT_TOKENS")
+    if not NVIDIA_KEY:
+        missing.append("NVIDIA_API_KEY")
+    if missing:
+        raise RuntimeError("Missing required env vars: " + ", ".join(missing))
+    if not PPLX_KEY:
+        log.warning("PPLX_API_KEY is not set; web search will use DuckDuckGo fallback only.")
+
 # ─── DEFAULT INSTRUCTION ───
 MILEAN_INSTR = """Ты — высококлассный российский юрист и адвокат с практикой более 20 лет.
 Специализация:
@@ -226,6 +238,8 @@ def _needs_web(query: str) -> bool:
 # ─── PERPLEXITY SEARCH (with internet) ───
 async def perplexity_search(query: str) -> str:
     """Use Perplexity API for internet-powered answers."""
+    if not PPLX_KEY:
+        return ""
     try:
         ssl_ctx = ssl.create_default_context()
         ssl_ctx.check_hostname = False
@@ -1227,10 +1241,9 @@ def _build_bots() -> list[Bot]:
 
 # ─── MAIN ───
 async def main():
+    _validate_env()
     dp.include_router(router)
     bots = _build_bots()
-    if not bots:
-        raise RuntimeError("No bot tokens configured. Set BOT_TOKEN or BOT_TOKENS.")
     await asyncio.gather(*(_prepare_bot(bot_client) for bot_client in bots))
     log.info(f"🚀 MILEAN Bot started! Active bots: {len(bots)}")
     await dp.start_polling(*bots)
