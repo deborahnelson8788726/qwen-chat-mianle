@@ -39,6 +39,7 @@ PPLX_MODEL = "sonar"                       # Perplexity with internet
 MAX_HISTORY = 10
 MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB
 SYNC_API = "https://milean.vercel.app/api/sync"
+CODEX_API = "https://milean.vercel.app/api/codex"
 CHUNK_SIZE = 500
 RAG_TOP_K = 8
 
@@ -303,6 +304,44 @@ async def smart_web_search(query: str) -> str:
     return await web_search(query)
 
 
+async def codex_enqueue_task(token: str, task: str, msg: Message) -> dict:
+    payload = {
+        "token": token,
+        "action": "enqueue",
+        "task": task,
+        "chat_id": msg.chat.id,
+        "user_id": msg.from_user.id,
+        "username": msg.from_user.username or "",
+        "source": "telegram",
+    }
+    ssl_ctx = ssl.create_default_context()
+    ssl_ctx.check_hostname = False
+    ssl_ctx.verify_mode = ssl.CERT_NONE
+    timeout = aiohttp.ClientTimeout(total=25, connect=10)
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            CODEX_API, json=payload, ssl=ssl_ctx, timeout=timeout
+        ) as resp:
+            data = await resp.json()
+            if resp.status != 200 or not data.get("ok"):
+                raise RuntimeError(data.get("error") or f"HTTP {resp.status}")
+            return data.get("task") or {}
+
+
+async def codex_list_tasks(token: str, limit: int = 10) -> list:
+    ssl_ctx = ssl.create_default_context()
+    ssl_ctx.check_hostname = False
+    ssl_ctx.verify_mode = ssl.CERT_NONE
+    timeout = aiohttp.ClientTimeout(total=25, connect=10)
+    url = f"{CODEX_API}?token={token}&action=list&limit={max(1,min(limit,50))}"
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, ssl=ssl_ctx, timeout=timeout) as resp:
+            data = await resp.json()
+            if resp.status != 200 or not data.get("ok"):
+                raise RuntimeError(data.get("error") or f"HTTP {resp.status}")
+            return data.get("tasks") or []
+
+
 # ─── NVIDIA API CALL ───
 async def _call_model(model: str, messages: list, max_tokens: int = 4096,
                       timeout_sec: int = 60) -> tuple:
@@ -430,7 +469,8 @@ async def cmd_help(msg: Message):
         "🗑 /clearfiles — удалить все файлы\n\n"
         "🔗 /connect <i>TOKEN</i> — подключить проект с web\n"
         "🔑 /token — как получить токен\n\n"
-        "🤖 /codex <i>задача</i> — подготовить задачу для Codex\n\n"
+        "🤖 /codex <i>задача</i> — отправить задачу в Codex relay\n"
+        "📡 /codexstatus — статус очереди Codex\n\n"
         "🌐 /web — вкл/выкл веб-поиск\n"
         "🧠 /think — вкл/выкл режим Think\n"
         "🔄 /clear — очистить историю чата\n"
@@ -733,38 +773,91 @@ async def cmd_token(msg: Message):
 
 @router.message(Command("codex"))
 async def cmd_codex(msg: Message):
-    """Prepare and store a task text for Codex workflow."""
+    """Send task to Codex relay queue for current connected project."""
     u = get_user(msg.from_user.id, msg.bot.id)
-    parts = (msg.text or "").split(maxsplit=1)
-    if len(parts) < 2 or not parts[1].strip():
-        last = (u.get("last_codex_task") or "").strip()
-        last_block = ""
-        if last:
-            preview = last[:700] + ("..." if len(last) > 700 else "")
-            last_block = f"\n\n📝 <b>Последняя сохранённая задача:</b>\n<blockquote>{_escape(preview)}</blockquote>"
+    token = (u.get("project_token") or "").strip().upper()
+    if not token:
         await msg.answer(
-            "🤖 <b>Codex-задача</b>\n\n"
-            "Формат команды:\n"
-            "<code>/codex что нужно сделать</code>\n\n"
-            "Пример:\n"
-            "<code>/codex исправь 500 ошибку в /api/fetch и задеплой</code>\n\n"
-            "ℹ️ Telegram-бот не может напрямую писать в текущий desktop-сеанс Codex, "
-            "но сохранит задачу и вернёт готовый текст для отправки в Codex."
-            f"{last_block}",
+            "❌ <b>Сначала подключите проект:</b>\n"
+            "<code>/connect ML-XXXXXXXX</code>\n\n"
+            "После подключения команда /codex будет отправлять задачи "
+            "в общую очередь Codex relay.",
             parse_mode=ParseMode.HTML
         )
         return
 
+    parts = (msg.text or "").split(maxsplit=1)
+    if len(parts) < 2 or not parts[1].strip():
+        await cmd_codexstatus(msg)
+        return
+
     task = parts[1].strip()
-    if len(task) > 3000:
-        task = task[:3000]
+    if len(task) > 6000:
+        task = task[:6000]
     u["last_codex_task"] = task
-    await msg.answer(
-        "✅ <b>Задача для Codex сохранена</b>\n\n"
-        f"<blockquote>{_escape(task)}</blockquote>\n\n"
-        "Отправьте этот текст в Codex-чате для выполнения.",
-        parse_mode=ParseMode.HTML
-    )
+    wait_msg = await msg.answer("⏳ Отправка задачи в очередь Codex...")
+    try:
+        t = await codex_enqueue_task(token, task, msg)
+        tid = t.get("id", "—")
+        await wait_msg.edit_text(
+            "✅ <b>Задача поставлена в очередь Codex</b>\n\n"
+            f"🆔 <code>{tid}</code>\n"
+            f"📂 Проект: <code>{token}</code>\n"
+            f"📝 Задача:\n<blockquote>{_escape(task[:900] + ('...' if len(task) > 900 else ''))}</blockquote>\n\n"
+            "Проверьте статус: /codexstatus",
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        await wait_msg.edit_text(f"❌ Ошибка очереди Codex: {e}")
+
+
+@router.message(Command("codexstatus"))
+async def cmd_codexstatus(msg: Message):
+    """Show Codex relay queue status for connected project."""
+    u = get_user(msg.from_user.id, msg.bot.id)
+    token = (u.get("project_token") or "").strip().upper()
+    if not token:
+        await msg.answer(
+            "❌ Проект не подключён.\n"
+            "Сначала: <code>/connect ML-XXXXXXXX</code>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+    try:
+        tasks = await codex_list_tasks(token, limit=8)
+    except Exception as e:
+        await msg.answer(f"❌ Не удалось получить статус Codex: {e}")
+        return
+    if not tasks:
+        await msg.answer(
+            f"📡 <b>Очередь Codex ({token}) пуста</b>\n"
+            "Отправьте задачу: <code>/codex исправь ...</code>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    icons = {
+        "queued": "🕒",
+        "claimed": "🛠",
+        "done": "✅",
+        "error": "❌",
+        "skipped": "⏭",
+        "canceled": "🚫",
+    }
+    lines = [f"📡 <b>Codex очередь проекта {token}</b>\n"]
+    for t in tasks:
+        st = (t.get("status") or "queued").lower()
+        icon = icons.get(st, "•")
+        tid = t.get("id", "—")
+        txt = (t.get("task") or "").strip().replace("\n", " ")
+        if len(txt) > 90:
+            txt = txt[:90] + "..."
+        who = t.get("claimed_by") or t.get("completed_by") or ""
+        if who:
+            lines.append(f"{icon} <code>{tid}</code> · <b>{st}</b> · {who}\n<blockquote>{_escape(txt)}</blockquote>")
+        else:
+            lines.append(f"{icon} <code>{tid}</code> · <b>{st}</b>\n<blockquote>{_escape(txt)}</blockquote>")
+    await msg.answer("\n".join(lines), parse_mode=ParseMode.HTML)
 
 
 # ─── FILE HANDLER ───
@@ -1260,6 +1353,7 @@ async def set_commands(bot_client: Bot):
         BotCommand(command="connect", description="🔗 Подключить проект с web"),
         BotCommand(command="token", description="🔑 Как получить токен"),
         BotCommand(command="codex", description="🤖 Задача для Codex"),
+        BotCommand(command="codexstatus", description="📡 Статус очереди Codex"),
         BotCommand(command="settings", description="⚙️ Настройки"),
     ]
     await bot_client.set_my_commands(commands)
