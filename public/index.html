@@ -143,6 +143,7 @@ select.hbtn option{background:var(--s);color:var(--t)}
   display:flex;
   flex-direction:column;
   gap:18px;
+  font-family:var(--chat-ff,Georgia,serif);
   scrollbar-gutter:stable;
   scrollbar-width:auto;
   scrollbar-color:var(--ac) rgba(118,185,0,.12)
@@ -179,7 +180,7 @@ body.light #msgs::-webkit-scrollbar-thumb{border-color:rgba(255,255,255,.8)}
 .m.a .mb{background:var(--ab);border:1px solid var(--bd);border-radius:4px}
 .rsrcs{display:flex;flex-wrap:wrap;gap:3px;margin-top:5px}
 .rsrc{font-size:9px;font-family:'Space Mono',monospace;background:rgba(68,136,255,.08);border:1px solid rgba(68,136,255,.2);border-radius:3px;padding:1px 5px;color:var(--info)}
-.thblk{background:rgba(118,185,0,.04);border:1px solid rgba(118,185,0,.12);border-radius:4px;padding:8px 12px;margin-bottom:6px;font-size:11px;font-family:'Space Mono',monospace;color:var(--t2);max-height:100px;overflow-y:auto;white-space:pre-wrap;word-break:break-word}
+.thblk{background:rgba(118,185,0,.04);border:1px solid rgba(118,185,0,.12);border-radius:4px;padding:8px 12px;margin-bottom:6px;font-size:11px;font-family:var(--chat-ff,Georgia,serif);color:var(--t2);max-height:100px;overflow-y:auto;white-space:pre-wrap;word-break:break-word}
 .thl{font-size:9px;color:rgba(118,185,0,.5);text-transform:uppercase;margin-bottom:4px}
 .tdots{display:flex;gap:5px;padding:14px 18px}
 .tdots span{width:6px;height:6px;border-radius:50%;background:var(--ac);animation:bn 1.2s ease-in-out infinite}
@@ -195,7 +196,7 @@ body.light #msgs::-webkit-scrollbar-thumb{border-color:rgba(255,255,255,.8)}
 #ibar{padding:12px;display:flex;flex-direction:column;flex:1;z-index:10}
 .iwrap{display:flex;flex-direction:column;gap:10px;background:var(--bg);border:1px solid var(--bd);border-radius:10px;padding:10px;flex:1;transition:border-color .2s,box-shadow .2s}
 .iwrap:focus-within{border-color:var(--ac);box-shadow:0 0 0 3px var(--gl)}
-#inp{flex:1;background:transparent;border:none;outline:none;color:var(--t);font-family:'Syne',sans-serif;font-size:14px;resize:none;line-height:1.5}
+#inp{flex:1;background:transparent;border:none;outline:none;color:var(--t);font-family:var(--chat-ff,Georgia,serif);font-size:14px;resize:none;line-height:1.5}
 #inp::placeholder{color:var(--t2)}
 .ibar-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}
 #sbtn{width:34px;height:34px;background:var(--ac);border:none;border-radius:7px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s}
@@ -373,16 +374,16 @@ body.light .sdot{background:var(--ac);box-shadow:0 0 6px var(--ac)}
 <span id="fontSizeLabel" style="font-size:9px;font-family:'Space Mono',monospace;color:var(--t2);min-width:20px;text-align:center">15</span>
 <button onclick="changeFontSize(1)" style="background:var(--s2);border:1px solid var(--bd);border-radius:4px;width:22px;height:22px;font-size:14px;color:var(--t);cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:700" title="Увеличить шрифт">+</button>
 <select id="fontSelect" onchange="changeFont(this.value)" style="background:var(--s2);border:1px solid var(--bd);border-radius:4px;font-size:9px;font-family:'Space Mono',monospace;color:var(--t);padding:3px 6px;cursor:pointer;max-width:110px">
-<option value="'Georgia',serif">Georgia</option>
-<option value="'Literata',serif">Literata</option>
-<option value="'Merriweather',serif">Merriweather</option>
-<option value="'PT Serif',serif">PT Serif</option>
-<option value="'Lora',serif">Lora</option>
-<option value="'Source Sans Pro',sans-serif">Source Sans</option>
-<option value="'Inter',sans-serif">Inter</option>
-<option value="'Roboto',sans-serif">Roboto</option>
-<option value="'Open Sans',sans-serif">Open Sans</option>
-<option value="'Noto Sans',sans-serif">Noto Sans</option>
+<option value="georgia">Georgia</option>
+<option value="literata">Literata</option>
+<option value="merriweather">Merriweather</option>
+<option value="ptserif">PT Serif</option>
+<option value="lora">Lora</option>
+<option value="sourcesans">Source Sans</option>
+<option value="inter">Inter</option>
+<option value="roboto">Roboto</option>
+<option value="opensans">Open Sans</option>
+<option value="notosans">Noto Sans</option>
 </select>
 </div>
 <div id="ibar">
@@ -1045,7 +1046,38 @@ document.getElementById("instrTxt").addEventListener("input",function(){
 
 // === FONT SIZE & FAMILY ===
 var chatFontSize=parseInt(localStorage.getItem("milean_fontSize"))||15;
-var chatFontFamily=localStorage.getItem("milean_fontFamily")||"'Georgia',serif";
+var FONT_MAP={
+  georgia:"Georgia,'Times New Roman',serif",
+  literata:"'Literata',Georgia,serif",
+  merriweather:"'Merriweather',Georgia,serif",
+  ptserif:"'PT Serif',Georgia,serif",
+  lora:"'Lora',Georgia,serif",
+  sourcesans:"'Source Sans Pro','Open Sans',Arial,sans-serif",
+  inter:"'Inter',Arial,sans-serif",
+  roboto:"'Roboto','Noto Sans',Arial,sans-serif",
+  opensans:"'Open Sans',Arial,sans-serif",
+  notosans:"'Noto Sans',Arial,sans-serif"
+};
+
+function normalizeFontKey(saved){
+  if(!saved)return "georgia";
+  var s=String(saved).toLowerCase().replace(/\s+/g,"");
+  if(FONT_MAP[s])return s;
+  if(s.indexOf("literata")!==-1)return "literata";
+  if(s.indexOf("merriweather")!==-1)return "merriweather";
+  if(s.indexOf("ptserif")!==-1||s.indexOf("pt-serif")!==-1)return "ptserif";
+  if(s.indexOf("lora")!==-1)return "lora";
+  if(s.indexOf("sourcesanspro")!==-1||s.indexOf("sourcesans")!==-1)return "sourcesans";
+  if(s.indexOf("inter")!==-1)return "inter";
+  if(s.indexOf("roboto")!==-1)return "roboto";
+  if(s.indexOf("opensans")!==-1)return "opensans";
+  if(s.indexOf("notosans")!==-1)return "notosans";
+  if(s.indexOf("georgia")!==-1)return "georgia";
+  return "georgia";
+}
+
+var chatFontKey=normalizeFontKey(localStorage.getItem("milean_fontFamilyKey")||localStorage.getItem("milean_fontFamily"));
+var chatFontFamily=FONT_MAP[chatFontKey]||FONT_MAP.georgia;
 
 function applyFont(){
   document.documentElement.style.setProperty("--chat-fs",chatFontSize+"px");
@@ -1053,18 +1085,25 @@ function applyFont(){
   var lbl=document.getElementById("fontSizeLabel");
   if(lbl)lbl.textContent=chatFontSize;
   var sel=document.getElementById("fontSelect");
-  if(sel){for(var i=0;i<sel.options.length;i++){if(sel.options[i].value===chatFontFamily){sel.selectedIndex=i;break}}}
+  if(sel){
+    sel.value=chatFontKey;
+    sel.style.fontFamily=chatFontFamily;
+  }
 }
 function changeFontSize(delta){
   chatFontSize=Math.max(10,Math.min(28,chatFontSize+delta));
   localStorage.setItem("milean_fontSize",chatFontSize);
   applyFont();
 }
-function changeFont(family){
-  chatFontFamily=family;
-  localStorage.setItem("milean_fontFamily",family);
+function changeFont(key){
+  chatFontKey=normalizeFontKey(key);
+  chatFontFamily=FONT_MAP[chatFontKey]||FONT_MAP.georgia;
+  localStorage.setItem("milean_fontFamilyKey",chatFontKey);
+  localStorage.setItem("milean_fontFamily",chatFontFamily);
   applyFont();
 }
+var fontSelEl=document.getElementById("fontSelect");
+if(fontSelEl)fontSelEl.addEventListener("input",function(){changeFont(this.value)});
 setTimeout(applyFont,100);
 function updateProjectLabel(){
   var p=getActiveProject();
