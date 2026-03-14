@@ -15,6 +15,7 @@
   Формат для нескольких ботов: `token1,token2,token3`
 - `NVIDIA_API_KEY`
 - `PPLX_API_KEY` (опционально; без него будет fallback на DuckDuckGo)
+- `CODEX_DEFAULT_TOKEN` (опционально; токен проекта для `/codex` и `/codexstatus` без ручного `/connect`)
 
 ## Вариант 1: Render (рекомендуется)
 
