@@ -25,6 +25,8 @@ cp telegram-bot/relay.env.example ~/.codex-relay/relay.env
 Минимум:
 - `CODEX_RELAY_TOKEN=ML-XXXXXXXX`
 - `BOT_TOKEN=<ваш Telegram bot token>` (опционально, но нужен для push-уведомлений о статусах)
+- `SENTRY_DSN=` (опционально, но рекомендуется для мониторинга ошибок relay)
+- `ALERT_BOT_TOKEN` + `ALERT_CHAT_ID` (опционально, если нужны отдельные аварийные уведомления)
 
 2. Сервис запускается скриптом:
 ```bash

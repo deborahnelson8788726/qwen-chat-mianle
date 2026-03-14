@@ -18,6 +18,11 @@ import urllib.parse
 import urllib.request
 from typing import Optional, Dict, Any
 
+try:
+    import sentry_sdk  # type: ignore
+except Exception:
+    sentry_sdk = None
+
 
 def http_json(method: str, url: str, payload: Optional[Dict[str, Any]] = None, timeout: int = 30):
     data = None
@@ -42,6 +47,25 @@ def send_telegram(bot_token: str, chat_id: int, text: str):
         http_json("POST", url, payload, timeout=20)
     except Exception:
         pass
+
+
+def report_error(where: str, exc: Exception, bot_token: str = "", chat_id: int = 0):
+    if sentry_sdk:
+        try:
+            with sentry_sdk.push_scope() as scope:
+                scope.set_tag("component", where)
+                sentry_sdk.capture_exception(exc)
+        except Exception:
+            pass
+    if bot_token and chat_id:
+        send_telegram(bot_token, chat_id, f"⚠️ <b>Relay error</b> [{html.escape(where)}]\n<blockquote>{html.escape(str(exc))}</blockquote>")
+
+
+def to_chat_id(value) -> int:
+    try:
+        return int(value or 0)
+    except Exception:
+        return 0
 
 
 def format_tail(text: str, limit: int = 1800) -> str:
@@ -124,6 +148,12 @@ def main():
     ap.add_argument("--extra-args", default=os.getenv("CODEX_RELAY_EXTRA_ARGS", ""), help="Extra args for codex exec")
     args = ap.parse_args()
 
+    if sentry_sdk and os.getenv("SENTRY_DSN", "").strip():
+        try:
+            sentry_sdk.init(dsn=os.getenv("SENTRY_DSN", "").strip(), traces_sample_rate=0.05)
+        except Exception:
+            pass
+
     worker_id = f"{socket.gethostname()}:{os.getpid()}"
     extra_args = shlex.split(args.extra_args) if args.extra_args else []
 
@@ -133,6 +163,7 @@ def main():
             task = claim_task(args.api_url, args.token, worker_id, args.stale_sec)
         except Exception as e:
             print(f"[relay] claim error: {e}")
+            report_error("relay.claim", e)
             time.sleep(max(args.poll_sec, 5))
             continue
 
@@ -155,6 +186,7 @@ def main():
                 complete_task(args.api_url, args.token, tid, "done", result, worker_id)
             except Exception as e:
                 print(f"[relay] complete error: {e}")
+                report_error("relay.complete", e, args.bot_token, to_chat_id(chat_id))
             send_telegram(args.bot_token, chat_id, f"✅ <b>Codex dry-run завершён</b>\n🆔 <code>{html.escape(str(tid))}</code>")
             if args.once:
                 return
@@ -177,11 +209,13 @@ def main():
         except Exception as e:
             status = "error"
             summary = f"Worker error: {e}"
+            report_error("relay.run_codex", e, args.bot_token, to_chat_id(chat_id))
 
         try:
             complete_task(args.api_url, args.token, tid, status, summary, worker_id)
         except Exception as e:
             print(f"[relay] complete error: {e}")
+            report_error("relay.complete", e, args.bot_token, to_chat_id(chat_id))
 
         short = format_tail(summary, 2000)
         if status == "done":

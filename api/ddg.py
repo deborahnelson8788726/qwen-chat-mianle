@@ -2,6 +2,7 @@
 from http.server import BaseHTTPRequestHandler
 import json, urllib.request, urllib.error, ssl, socket, re
 from html.parser import HTMLParser
+from _monitor import capture
 
 SSL_CTX = ssl._create_unverified_context()
 DDG_HTML = "https://html.duckduckgo.com/html/"
@@ -100,6 +101,7 @@ class handler(BaseHTTPRequestHandler):
                     citations.append(url)
             self._json(200, {"content": content.strip(), "citations": citations})
         except Exception as e:
+            capture(e, "api.ddg.search")
             self._json(502, {"error": f"DDG search error: {e}"})
 
     def _cors(self):

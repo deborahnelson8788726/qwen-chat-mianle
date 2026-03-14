@@ -16,6 +16,9 @@
 - `NVIDIA_API_KEY`
 - `PPLX_API_KEY` (опционально; без него будет fallback на DuckDuckGo)
 - `CODEX_DEFAULT_TOKEN` (опционально; токен проекта для `/codex` и `/codexstatus` без ручного `/connect`)
+- `REDIS_URL` (рекомендуется; персистентное состояние пользователей и очередей)
+- `SENTRY_DSN` (рекомендуется; мониторинг ошибок)
+- `ALERT_BOT_TOKEN` + `ALERT_CHAT_ID` (опционально; уведомления о падениях/ошибках в Telegram)
 
 ## Вариант 1: Render (рекомендуется)
 
@@ -24,6 +27,7 @@
 3. В `Environment` задайте переменные из блока выше.
 4. Нажмите Deploy.
 5. После старта проверьте логи: должно быть `MILEAN Bot started! Active bots: ...`.
+6. Проверка API health: `https://milean.vercel.app/api/health`
 
 ## Вариант 2: Railway
 

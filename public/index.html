@@ -287,7 +287,7 @@ body.light .sdot{background:var(--ac);box-shadow:0 0 6px var(--ac)}
 </div>
 <button class="side-toggle" id="sideToggle" onclick="toggleSidebar()">☰</button>
 <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()">🌙 <span>Тема</span></button>
-<div id="keybar" style="display:none"><input type="password" id="apiKey" value="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"/><input type="password" id="pplxKey" value=""/></div>
+<div id="keybar" style="display:none"><input type="password" id="apiKey" value=""/><input type="password" id="pplxKey" value=""/></div>
 <div class="main">
 <div id="sidebar">
 <div class="side-brand">
@@ -502,7 +502,7 @@ window.addEventListener("unhandledrejection",function(e){
 });
 
 var API="/api/proxy",MDL="qwen/qwen3.5-397b-a17b";
-var hist=[],loading=false,files=[],ragSrc=[],allOn=true,thinkOn=false,txtMode=false,docMode=false,webMode=false,ddgMode=false,instrOn=true;
+var hist=[],loading=false,files=[],ragSrc=[],webSrc=[],webCheckedAt="",allOn=true,thinkOn=false,txtMode=false,docMode=false,webMode=false,ddgMode=false,instrOn=true;
 var instrDirty=false;
 var loadState="idle",loadPct=0,loadLabel="Готово",loadDoneTimer=null;
 
@@ -518,11 +518,14 @@ function defaultProjectSettings(){
   };
 }
 
-// Restore shared keys only
+// Restore optional user-provided keys only (no hardcoded secrets in frontend)
 (function(){
-  var sk=localStorage.getItem("milean_pplx");
-  if(!sk){sk="pplx-9OzbY"+"g3TpVEMhK4RAJ49WVI"+"krqR1NufFsKNPu"+"oCenUc7xUMe";localStorage.setItem("milean_pplx",sk)}
-  var el=document.getElementById("pplxKey");if(el)el.value=sk
+  var pplx=localStorage.getItem("milean_pplx")||"";
+  var nv=localStorage.getItem("milean_nvapi")||"";
+  var pplxEl=document.getElementById("pplxKey");
+  var nvEl=document.getElementById("apiKey");
+  if(pplxEl)pplxEl.value=pplx;
+  if(nvEl)nvEl.value=nv;
 })();
 // === PROJECT SETTINGS UI ===
 function setInstrStatus(text,color){
@@ -615,16 +618,8 @@ function toggleProjectSetting(key){
 function toggleProjectWeb(){
   var p=getActiveProject();if(!p)return;
   p.settings=p.settings||defaultProjectSettings();
-  if(!p.settings.webMode){
-    var pk=document.getElementById("pplxKey").value.trim();
-    if(!pk){
-      pk=prompt("Введите Perplexity API ключ (pplx-...):");
-      if(!pk||!pk.trim())return;
-      pk=pk.trim();
-      document.getElementById("pplxKey").value=pk;
-      localStorage.setItem("milean_pplx",pk);
-    }
-  }
+  var pk=document.getElementById("pplxKey").value.trim();
+  if(pk)localStorage.setItem("milean_pplx",pk);
   p.settings.webMode=!p.settings.webMode;
   applyProjectSettingsToRuntime(p);
   refreshProjectSettingsUI();
@@ -1341,8 +1336,8 @@ function paintLoadProgress(){
 function beginLoadProgress(label){
   clearTimeout(loadDoneTimer);
   loadState="loading";
-  loadPct=6;
-  loadLabel=label||"⏳ Подготовка запроса...";
+  loadPct=8;
+  loadLabel=label||"⏳ Этап 1/4: подготовка запроса...";
   paintLoadProgress();
 }
 function setLoadProgress(pct,label){
@@ -1355,6 +1350,21 @@ function bumpLoadProgress(step,label){
   if(loadState!=="loading")return;
   var s=typeof step==="number"?step:0.8;
   setLoadProgress(loadPct+s,label||loadLabel);
+}
+var LOAD_STAGE_PCT={prepare:8,search:34,verify:56,generate:84,done:100,error:100};
+function setLoadStage(stage,label){
+  if(loadState!=="loading"&&stage!=="done"&&stage!=="error")return;
+  var pct=LOAD_STAGE_PCT[stage];
+  if(typeof pct!=="number")pct=loadPct;
+  if(stage==="done"){
+    finishLoadProgress(true,label||"✅ Этап 4/4: всё загружено");
+    return;
+  }
+  if(stage==="error"){
+    finishLoadProgress(false,label||"⚠ Этап прерван");
+    return;
+  }
+  setLoadProgress(pct,label||loadLabel);
 }
 function finishLoadProgress(ok,label){
   clearTimeout(loadDoneTimer);
@@ -1372,15 +1382,16 @@ function finishLoadProgress(ok,label){
 }
 function syncLoadWithStatus(t){
   if(loadState!=="loading"||!t)return;
-  var p=loadPct;
-  if(t.indexOf("RAG")!==-1)p=18;
-  else if(t.indexOf("Поиск в интернете")!==-1)p=34;
-  else if(t.indexOf("Чтение страниц")!==-1)p=48;
-  else if(t.indexOf("Отправка в NVIDIA API")!==-1)p=62;
-  else if(t.indexOf("Получение ответа")!==-1)p=74;
-  else if(t.indexOf("Генерация")!==-1)p=86;
-  else if(t.indexOf("Повтор без Thinking")!==-1)p=66;
-  setLoadProgress(p,t);
+  if(t.indexOf("Поиск в интернете")!==-1||t.indexOf("RAG")!==-1){
+    setLoadStage("search",t);return;
+  }
+  if(t.indexOf("Чтение страниц")!==-1||t.indexOf("Проверка источников")!==-1){
+    setLoadStage("verify",t);return;
+  }
+  if(t.indexOf("Отправка в NVIDIA API")!==-1||t.indexOf("Получение ответа")!==-1||t.indexOf("Генерация")!==-1){
+    setLoadStage("generate",t);return;
+  }
+  setLoadProgress(loadPct,t);
 }
 function showStatus(t){
   var s=document.getElementById("sbar"),st=document.getElementById("stxt");
@@ -1457,16 +1468,19 @@ function getLegalDomainsFromInstruction(instrText){
 function send(){
   if(loading)return;
   var key=document.getElementById("apiKey").value.trim();
-  if(!key){alert("Введите API ключ!");return}
+  if(key){
+    localStorage.setItem("milean_nvapi",key);
+  }
   var inp=document.getElementById("inp"),text=inp.value.trim();
   if(!text)return;
   inp.value="";inp.style.height="auto";
   addMsg("user",text);
   hist.push({role:"user",content:text});
   loading=true;document.getElementById("sbtn").disabled=true;
-  beginLoadProgress("⏳ Подготовка запроса...");
+  beginLoadProgress("⏳ Этап 1/4: подготовка запроса...");
+  setLoadStage("prepare","⏳ Этап 1/4: подготовка запроса...");
   document.getElementById("sdot").style.background="#ff9500";
-  addTyping();ragSrc=[];
+  addTyping();ragSrc=[];webSrc=[];webCheckedAt="";
 
   console.log("send() started, text:",text.substring(0,50));
 
@@ -1476,10 +1490,12 @@ function send(){
     messages=messages.concat(hist);
 
     var useThinking=thinkOn&&(enCount>0||text.length>40);
-    showStatus("⏳ Отправка в NVIDIA API...");
+    showStatus("🧠 Этап 3/4: отправка в модель...");
+    setLoadStage("generate","🧠 Этап 3/4: отправка в модель...");
     console.log("Sending to API (stream), msgs:",messages.length,"thinking:",useThinking,"requestedThink:",thinkOn);
 
-    var bodyObj={__api_key__:key,model:MDL,messages:messages,max_tokens:4096,temperature:0.6,top_p:0.95,stream:true};
+    var bodyObj={model:MDL,messages:messages,max_tokens:4096,temperature:0.6,top_p:0.95,stream:true};
+    if(key)bodyObj.__api_key__=key;
     if(useThinking)bodyObj.chat_template_kwargs={enable_thinking:true};
 
     function doFetch(bodyObj,isRetry){
@@ -1502,7 +1518,7 @@ function send(){
           throw new Error(e.error||e.detail||e.message||"HTTP "+r.status);
         });
       }
-      showStatus("🧠 Получение ответа...");
+      showStatus("🧠 Этап 3/4: получение ответа...");
       remTyping();
 
       var w=document.getElementById("welcome");if(w)w.remove();
@@ -1526,17 +1542,21 @@ function send(){
       function pump(){
         return reader.read().then(function(res){
           if(res.done){
-            if(ragSrc&&ragSrc.length){
+            var allSrc=(ragSrc||[]).concat(webSrc||[]);
+            if(allSrc&&allSrc.length){
               var sd2=document.createElement("div");sd2.className="rsrcs";var seen2={};
-              for(var i=0;i<ragSrc.length;i++){if(seen2[ragSrc[i]])continue;seen2[ragSrc[i]]=true;
-                var tg=document.createElement("span");tg.className="rsrc";tg.textContent="📎 "+ragSrc[i];sd2.appendChild(tg)}
+              for(var i=0;i<allSrc.length;i++){if(seen2[allSrc[i]])continue;seen2[allSrc[i]]=true;
+                var tg=document.createElement("span");tg.className="rsrc";tg.textContent="📎 "+allSrc[i];sd2.appendChild(tg)}
+              if(webCheckedAt){
+                var dt=document.createElement("span");dt.className="rsrc";dt.textContent="🗓 "+webCheckedAt;sd2.appendChild(dt);
+              }
               md.appendChild(sd2);
             }
             if(!content)content="[пустой ответ]";
             mbody.textContent=content;
             hist.push({role:"assistant",content:content});
             showStatus("");
-            finishLoadProgress(true,"✅ Всё загружено");
+            setLoadStage("done","✅ Этап 4/4: всё загружено");
             loading=false;document.getElementById("sbtn").disabled=false;
             document.getElementById("sdot").style.background="#76b900";
             console.log("Stream done, content len:",content.length,"think len:",think.length);
@@ -1563,7 +1583,12 @@ function send(){
                   thTxt.textContent=think;
                   thblk.scrollTop=thblk.scrollHeight;
                 }
-                if(delta.content!=null&&delta.content!==""){content+=delta.content;mbody.textContent=content;showStatus("✍️ Генерация...");bumpLoadProgress(0.7,"✍️ Генерация ответа...")}
+                if(delta.content!=null&&delta.content!==""){
+                  content+=delta.content;mbody.textContent=content;
+                  showStatus("✍️ Этап 3/4: генерация ответа...");
+                  setLoadStage("generate","✍️ Этап 3/4: генерация ответа...");
+                  bumpLoadProgress(0.6,"✍️ Этап 3/4: генерация ответа...");
+                }
               }
             }catch(e){}
           }
@@ -1579,7 +1604,7 @@ function send(){
       if(e.name==="AbortError"||msg.indexOf("abort")!==-1){
         msg="⏱ Таймаут: сервер не ответил. Попробуйте ещё раз или отключите Think.";
       }
-      finishLoadProgress(false,"⚠ Ошибка загрузки");
+      setLoadStage("error","⚠ Ошибка загрузки");
       remTyping();showStatus("");showErr(msg);
       loading=false;document.getElementById("sbtn").disabled=false;
       document.getElementById("sdot").style.background="#76b900";
@@ -1605,7 +1630,8 @@ function send(){
   console.log("Enabled files:",enCount);
 
   if(enCount>0){
-    showStatus("🔍 RAG поиск по "+enCount+" файлам...");
+    showStatus("🔍 Этап 2/4: RAG поиск по "+enCount+" файлам...");
+    setLoadStage("search","🔍 Этап 2/4: RAG поиск по файлам...");
     showAnalysis(true,"🔍 RAG поиск...","Поиск по "+enCount+" файлам",30);
     var enabledIds=enabledFiles.map(function(f){return f.id});
     dbGetChunks(activeProjectId,enabledIds).then(function(allChunks){
@@ -1635,6 +1661,7 @@ function send(){
 
   function doWebThenSend(parts,query,instrText){
     var searches=[],citations=[],seenCitations={};
+    var checkedAt=new Date().toLocaleString("ru-RU");
     var q=(query||"").toLowerCase();
     var forceWeb=/\b(today|latest|news|price|cost|buy|availability|release|launched|202[4-9])\b|сегодня|сейчас|актуаль|последн|новост|цена|ценник|сколько стоит|стоим|купить|наличие|вышел|релиз|парагва|магазин|где купить|самый выгод/i.test(q);
     var priceIntent=/\b(price|cost|buy|cheapest|deal)\b|цена|ценник|сколько стоит|купить|где купить|самый выгод|дешевле|наличие/i.test(q);
@@ -1643,6 +1670,7 @@ function send(){
     if(legalIntent) forceWeb=true;
     var gotWebData=false;
     if(forceWeb){
+      setLoadStage("search","🌐 Этап 2/4: поиск в интернете...");
       parts.push(
         "КРИТИЧЕСКОЕ ПРАВИЛО АКТУАЛЬНОСТИ: вопрос требует свежих данных из интернета. " +
         "Опирайся ТОЛЬКО на блоки веб-поиска/страниц в этом контексте. " +
@@ -1676,6 +1704,8 @@ function send(){
       }
     }
     function fetchPagesThenSend(){
+      webSrc=citations.slice(0);
+      webCheckedAt=checkedAt;
       var urls=[];
       for(var i=0;i<citations.length;i++){
         var u=citations[i];
@@ -1690,7 +1720,8 @@ function send(){
         return doSend(parts);
       }
 
-      showStatus("📄 Чтение страниц...");
+      showStatus("📄 Этап 2/4: проверка источников...");
+      setLoadStage("verify","📄 Этап 2/4: проверка источников...");
       fetch("/api/fetch",{method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({urls:urls})
       }).then(function(r){return r.json()}).then(function(data){
@@ -1709,21 +1740,23 @@ function send(){
       }).catch(function(e){
         console.error("Page fetch error:",e);
       }).then(function(){
+        if(citations.length){
+          parts.push("ДАТА ПРОВЕРКИ ИСТОЧНИКОВ: "+checkedAt);
+        }
         doSend(parts);
       });
     }
     // Perplexity
     var pplxKey=document.getElementById("pplxKey").value.trim();
-    var usePplx=webMode||(forceWeb&&!!pplxKey);
+    var usePplx=webMode||forceWeb;
     var useDdg=ddgMode||forceWeb;
     var pplxDomains=(legalIntent&&legalDomains.length)?legalDomains:[];
 
     if(usePplx){
-      var pplxKey=document.getElementById("pplxKey").value.trim();
-      if(pplxKey){
-        searches.push(
-          (function(){
-            var req={key:pplxKey,query:query};
+      searches.push(
+        (function(){
+            var req={query:query};
+            if(pplxKey)req.key=pplxKey;
             if(pplxDomains.length)req.domains=pplxDomains;
             return fetch("/api/search",{method:"POST",headers:{"Content-Type":"application/json"},
               body:JSON.stringify(req)
@@ -1732,6 +1765,7 @@ function send(){
           .then(function(r){return r.json()}).then(function(data){
             if(data.content){
               gotWebData=true;
+              if(data.checked_at)checkedAt=data.checked_at;
               var webCtx="РЕЗУЛЬТАТЫ ВЕБ-ПОИСКА (Perplexity):\n"+data.content;
               if(data.citations&&data.citations.length){
                 webCtx+="\n\nИсточники:\n"+data.citations.map(function(u,i){return "["+(i+1)+"] "+u}).join("\n");
@@ -1741,8 +1775,7 @@ function send(){
               console.log("Perplexity search added");
             }
           }).catch(function(e){console.error("Perplexity error:",e)})
-        );
-      }
+      );
     }
     // DuckDuckGo
     if(useDdg){
@@ -1791,7 +1824,8 @@ function send(){
       }
     }
     if(!searches.length) return doSend(parts);
-    showStatus("🌐 Поиск в интернете...");
+    showStatus("🌐 Этап 2/4: поиск в интернете...");
+    setLoadStage("search","🌐 Этап 2/4: поиск в интернете...");
     Promise.all(searches).then(fetchPagesThenSend).catch(fetchPagesThenSend);
   }
 }

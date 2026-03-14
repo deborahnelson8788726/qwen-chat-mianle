@@ -9,7 +9,7 @@ POST /api/codex
 GET /api/codex?token=...&action=list&limit=20
 GET /api/codex?token=...&action=get&id=...
 
-Storage: /tmp (best-effort, same as sync API).
+Storage: Redis (when REDIS_URL configured) with /tmp fallback.
 """
 from http.server import BaseHTTPRequestHandler
 import json
@@ -18,6 +18,8 @@ import re
 import time
 import urllib.parse
 import secrets
+from _kv import get_json, set_json
+from _monitor import capture
 
 QUEUE_DIR = "/tmp/milean_codex_queue"
 _MAX_AGE = 86400 * 7  # 7 days
@@ -35,6 +37,10 @@ def _safe_token(token: str) -> str:
 
 def _path(token: str) -> str:
     return os.path.join(QUEUE_DIR, f"{_safe_token(token)}.json")
+
+
+def _redis_key(token: str) -> str:
+    return f"milean:codexq:{token}"
 
 
 def _now() -> float:
@@ -67,6 +73,13 @@ def _load(token: str) -> dict:
         q = _cache[token]
         _cleanup_tasks(q)
         return q
+    rq = get_json(_redis_key(token))
+    if isinstance(rq, dict):
+        if not isinstance(rq.get("tasks"), list):
+            rq["tasks"] = []
+        _cleanup_tasks(rq)
+        _cache[token] = rq
+        return rq
     p = _path(token)
     if os.path.exists(p):
         try:
@@ -87,13 +100,17 @@ def _load(token: str) -> dict:
 
 
 def _save(token: str, q: dict):
-    _ensure_dir()
     q["ts"] = _now()
+    set_json(_redis_key(token), q, ttl_sec=_MAX_AGE)
+    _ensure_dir()
     p = _path(token)
     tmp = p + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(q, f, ensure_ascii=False)
-    os.replace(tmp, p)
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(q, f, ensure_ascii=False)
+        os.replace(tmp, p)
+    except Exception:
+        pass
     _cache[token] = q
 
 
@@ -260,6 +277,7 @@ class handler(BaseHTTPRequestHandler):
                 return
             self._json(400, {"error": "Unknown action"})
         except Exception as e:
+            capture(e, f"api.codex.post.{action}")
             self._json(400, {"error": str(e)})
 
     def do_GET(self):
@@ -270,25 +288,29 @@ class handler(BaseHTTPRequestHandler):
             self._json(400, {"error": "No token"})
             return
         action = (p.get("action", ["list"])[0] or "list").strip().lower()
-        if action == "list":
-            try:
-                limit = int((p.get("limit", ["20"])[0] or "20"))
-            except Exception:
-                limit = 20
-            self._json(200, {"ok": True, "tasks": _list(token, limit)})
-            return
-        if action == "get":
-            tid = (p.get("id", [""])[0] or "").strip()
-            if not tid:
-                self._json(400, {"error": "No id"})
+        try:
+            if action == "list":
+                try:
+                    limit = int((p.get("limit", ["20"])[0] or "20"))
+                except Exception:
+                    limit = 20
+                self._json(200, {"ok": True, "tasks": _list(token, limit)})
                 return
-            t = _get(token, tid)
-            if not t:
-                self._json(404, {"error": "Task not found"})
+            if action == "get":
+                tid = (p.get("id", [""])[0] or "").strip()
+                if not tid:
+                    self._json(400, {"error": "No id"})
+                    return
+                t = _get(token, tid)
+                if not t:
+                    self._json(404, {"error": "Task not found"})
+                    return
+                self._json(200, {"ok": True, "task": t})
                 return
-            self._json(200, {"ok": True, "task": t})
-            return
-        self._json(400, {"error": "Unknown action"})
+            self._json(400, {"error": "Unknown action"})
+        except Exception as e:
+            capture(e, f"api.codex.get.{action}")
+            self._json(500, {"error": "Queue read failure"})
 
     def _cors(self):
         self.send_header("Access-Control-Allow-Origin", "*")
@@ -305,4 +327,3 @@ class handler(BaseHTTPRequestHandler):
 
     def log_message(self, fmt, *args):
         pass
-

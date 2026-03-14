@@ -11,6 +11,7 @@ import ssl
 import urllib.error
 import urllib.parse
 import urllib.request
+from _monitor import capture
 
 try:
     from PyPDF2 import PdfReader
@@ -352,38 +353,46 @@ class handler(BaseHTTPRequestHandler):
             try:
                 pages.append(_fetch_one(u))
             except urllib.error.HTTPError as e:
+                capture(e, "api.fetch.http_error", {"url": u, "status": e.code})
                 if _should_try_browserless(e):
                     try:
                         pages.append(_fetch_with_browserless(u))
                         continue
                     except Exception as b_err:
+                        capture(b_err, "api.fetch.browserless_error", {"url": u})
                         failed.append({"url": u, "error": f"http {e.code}; browserless: {b_err}"})
                         continue
                 failed.append({"url": u, "error": f"http {e.code}"})
             except urllib.error.URLError as e:
+                capture(e, "api.fetch.url_error", {"url": u})
                 if _should_try_browserless(e):
                     try:
                         pages.append(_fetch_with_browserless(u))
                         continue
                     except Exception as b_err:
+                        capture(b_err, "api.fetch.browserless_error", {"url": u})
                         failed.append({"url": u, "error": f"{e.reason}; browserless: {b_err}"})
                         continue
                 failed.append({"url": u, "error": str(e.reason)})
             except (TimeoutError, socket.timeout):
+                capture(TimeoutError("fetch timeout"), "api.fetch.timeout", {"url": u})
                 if _should_try_browserless(TimeoutError()):
                     try:
                         pages.append(_fetch_with_browserless(u))
                         continue
                     except Exception as b_err:
+                        capture(b_err, "api.fetch.browserless_error", {"url": u})
                         failed.append({"url": u, "error": f"timeout; browserless: {b_err}"})
                         continue
                 failed.append({"url": u, "error": "timeout"})
             except Exception as e:
+                capture(e, "api.fetch.error", {"url": u})
                 if _should_try_browserless(e):
                     try:
                         pages.append(_fetch_with_browserless(u))
                         continue
                     except Exception as b_err:
+                        capture(b_err, "api.fetch.browserless_error", {"url": u})
                         failed.append({"url": u, "error": f"{e}; browserless: {b_err}"})
                         continue
                 failed.append({"url": u, "error": str(e)})

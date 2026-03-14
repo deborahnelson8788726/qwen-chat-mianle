@@ -1,9 +1,12 @@
 """NVIDIA API proxy — Vercel serverless"""
 from http.server import BaseHTTPRequestHandler
 import json, urllib.request, urllib.error, ssl, socket
+import os
+from _monitor import capture
 
 NVIDIA_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
 SSL_CTX = ssl._create_unverified_context()
+DEFAULT_NVIDIA_KEY = os.getenv("NVIDIA_API_KEY", "").strip()
 
 class handler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
@@ -20,9 +23,9 @@ class handler(BaseHTTPRequestHandler):
             self._json(400, {"error": f"Bad JSON: {e}"})
             return
 
-        key = d.pop("__api_key__", "")
+        key = (d.pop("__api_key__", "") or "").strip() or DEFAULT_NVIDIA_KEY
         if not key:
-            self._json(400, {"error": "no key"})
+            self._json(400, {"error": "NVIDIA API key is not configured"})
             return
 
         d["stream"] = True
@@ -63,10 +66,13 @@ class handler(BaseHTTPRequestHandler):
                 self.wfile.flush()
         except urllib.error.HTTPError as e:
             err = e.read().decode("utf-8", errors="replace")
+            capture(e, "api.proxy.http_error", {"status": e.code})
             self._json(e.code, {"error": err})
         except urllib.error.URLError as e:
+            capture(e, "api.proxy.url_error")
             self._json(502, {"error": str(e.reason)})
         except (TimeoutError, socket.timeout):
+            capture(TimeoutError("timeout"), "api.proxy.timeout")
             self._json(504, {"error": "Timeout"})
 
     def _cors(self):

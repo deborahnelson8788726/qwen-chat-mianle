@@ -1,9 +1,13 @@
 """Perplexity web search proxy — Vercel serverless"""
 from http.server import BaseHTTPRequestHandler
 import json, urllib.request, urllib.error, ssl, socket
+import os
+from datetime import datetime, timezone
+from _monitor import capture
 
 PPLX_URL = "https://api.perplexity.ai/chat/completions"
 SSL_CTX = ssl._create_unverified_context()
+DEFAULT_PPLX_KEY = os.getenv("PPLX_API_KEY", "").strip()
 
 
 def _clean_domains(raw):
@@ -56,10 +60,10 @@ class handler(BaseHTTPRequestHandler):
             self._json(400, {"error": f"Bad JSON: {e}"})
             return
 
-        key = d.get("key", "")
+        key = (d.get("key", "") or "").strip() or DEFAULT_PPLX_KEY
         query = d.get("query", "")
         if not key or not query:
-            self._json(400, {"error": "missing key or query"})
+            self._json(400, {"error": "missing query or PPLX_API_KEY is not configured"})
             return
 
         domains = _clean_domains(d.get("domains", []))
@@ -92,13 +96,20 @@ class handler(BaseHTTPRequestHandler):
                 content = data["choices"][0].get("message", {}).get("content", "")
             if "citations" in data:
                 citations = data["citations"]
-            self._json(200, {"content": content, "citations": citations})
+            self._json(200, {
+                "content": content,
+                "citations": citations,
+                "checked_at": datetime.now(timezone.utc).isoformat(),
+            })
         except urllib.error.HTTPError as e:
             err = e.read().decode("utf-8", errors="replace")
+            capture(e, "api.search.http_error", {"status": e.code})
             self._json(e.code, {"error": err})
         except urllib.error.URLError as e:
+            capture(e, "api.search.url_error")
             self._json(502, {"error": str(e.reason)})
         except (TimeoutError, socket.timeout):
+            capture(TimeoutError("Perplexity timeout"), "api.search.timeout")
             self._json(504, {"error": "Perplexity timeout"})
 
     def _cors(self):

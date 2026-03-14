@@ -2,14 +2,16 @@
 POST /api/sync — store project data by token
 GET /api/sync?token=XXX — retrieve project data by token
 
-Uses /tmp for persistence across serverless invocations (same instance).
-Also keeps in-memory cache for speed.
+Uses Redis when REDIS_URL is configured (primary persistence).
+Falls back to /tmp for local/serverless best-effort.
 """
 from http.server import BaseHTTPRequestHandler
 import json
 import os
 import urllib.parse
 import time
+from _kv import get_json, set_json, redis_available
+from _monitor import capture
 
 SYNC_DIR = "/tmp/milean_sync"
 _cache = {}
@@ -26,11 +28,17 @@ def _token_path(token):
 
 
 def _save(token, data):
-    _ensure_dir()
     data["ts"] = time.time()
+    # Redis primary
+    set_json(f"milean:sync:{token}", data, ttl_sec=_MAX_AGE)
+    # Fallback file storage
+    _ensure_dir()
     path = _token_path(token)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False)
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False)
+    except Exception:
+        pass
     _cache[token] = data
 
 
@@ -42,6 +50,12 @@ def _load(token):
             return d
         else:
             del _cache[token]
+
+    # Try Redis
+    d = get_json(f"milean:sync:{token}")
+    if isinstance(d, dict) and time.time() - d.get("ts", 0) < _MAX_AGE:
+        _cache[token] = d
+        return d
 
     # Try file
     path = _token_path(token)
@@ -60,6 +74,8 @@ def _load(token):
 
 
 def _cleanup():
+    if redis_available():
+        return
     _ensure_dir()
     now = time.time()
     try:
@@ -105,10 +121,13 @@ class handler(BaseHTTPRequestHandler):
             "hist": d.get("hist", []),
         }
 
-        _save(token, data)
-        _cleanup()
-
-        self._json(200, {"ok": True, "token": token})
+        try:
+            _save(token, data)
+            _cleanup()
+            self._json(200, {"ok": True, "token": token})
+        except Exception as e:
+            capture(e, "api.sync.post")
+            self._json(500, {"error": "Sync storage failure"})
 
     def do_GET(self):
         qs = urllib.parse.urlparse(self.path).query
@@ -119,19 +138,23 @@ class handler(BaseHTTPRequestHandler):
             self._json(400, {"error": "No token"})
             return
 
-        data = _load(token)
-        if not data:
-            self._json(404, {"error": "Project not found or expired"})
-            return
+        try:
+            data = _load(token)
+            if not data:
+                self._json(404, {"error": "Project not found or expired"})
+                return
 
-        self._json(200, {
-            "ok": True,
-            "name": data["name"],
-            "instr": data["instr"],
-            "files": data["files"],
-            "chunks": data["chunks"],
-            "hist": data["hist"],
-        })
+            self._json(200, {
+                "ok": True,
+                "name": data["name"],
+                "instr": data["instr"],
+                "files": data["files"],
+                "chunks": data["chunks"],
+                "hist": data["hist"],
+            })
+        except Exception as e:
+            capture(e, "api.sync.get")
+            self._json(500, {"error": "Sync read failure"})
 
     def _cors(self):
         self.send_header("Access-Control-Allow-Origin", "*")

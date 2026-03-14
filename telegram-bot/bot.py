@@ -10,11 +10,13 @@ import os
 import re
 import ssl
 import tempfile
+import time
 from io import BytesIO
 from typing import Optional
 
 import aiohttp
 from aiogram import Bot, Dispatcher, F, Router, types
+from aiogram import BaseMiddleware
 from aiogram.enums import ParseMode, ChatAction
 from aiogram.filters import Command, CommandStart
 from aiogram.types import (
@@ -24,6 +26,16 @@ from aiogram.types import (
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
+
+try:
+    import sentry_sdk  # type: ignore
+except Exception:
+    sentry_sdk = None
+
+try:
+    import redis  # type: ignore
+except Exception:
+    redis = None
 
 # ─── CONFIG ───
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
@@ -41,11 +53,149 @@ MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB
 SYNC_API = "https://milean.vercel.app/api/sync"
 CODEX_API = "https://milean.vercel.app/api/codex"
 CODEX_DEFAULT_TOKEN = os.getenv("CODEX_DEFAULT_TOKEN", "").strip().upper()
+REDIS_URL = os.getenv("REDIS_URL", "").strip()
+USER_STATE_TTL_SEC = int(os.getenv("USER_STATE_TTL_SEC", "2592000"))  # 30 days
+SENTRY_DSN = os.getenv("SENTRY_DSN", "").strip()
+ALERT_BOT_TOKEN = os.getenv("ALERT_BOT_TOKEN", "").strip()
+ALERT_CHAT_ID = os.getenv("ALERT_CHAT_ID", "").strip()
 CHUNK_SIZE = 500
 RAG_TOP_K = 8
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("milean-bot")
+_redis_client = None
+_alert_last_sent = {}
+
+if sentry_sdk and SENTRY_DSN:
+    try:
+        sentry_sdk.init(dsn=SENTRY_DSN, traces_sample_rate=0.1)
+    except Exception as e:
+        log.warning(f"Sentry init failed: {e}")
+
+
+LEGAL_SOURCE_DOMAINS = [
+    "consultant.ru",
+    "garant.ru",
+    "publication.pravo.gov.ru",
+    "pravo.gov.ru",
+    "duma.gov.ru",
+    "ksrf.ru",
+    "vsrf.ru",
+]
+
+
+def _get_redis():
+    global _redis_client
+    if not REDIS_URL or redis is None:
+        return None
+    if _redis_client is not None:
+        return _redis_client
+    try:
+        _redis_client = redis.Redis.from_url(
+            REDIS_URL,
+            decode_responses=True,
+            socket_connect_timeout=2,
+            socket_timeout=2,
+            retry_on_timeout=True,
+        )
+        _redis_client.ping()
+    except Exception as e:
+        log.warning(f"Redis unavailable: {e}")
+        _redis_client = None
+    return _redis_client
+
+
+def _user_state_key(uid: int, bot_id: Optional[int] = None) -> str:
+    if bot_id is None:
+        return f"milean:tguser:unknown:{uid}"
+    return f"milean:tguser:{bot_id}:{uid}"
+
+
+def _serialize_user(u: dict) -> dict:
+    return {
+        "hist": u.get("hist", []),
+        "files": u.get("files", []),
+        "chunks": u.get("chunks", []),
+        "instr": u.get("instr", ""),
+        "web_on": bool(u.get("web_on", False)),
+        "think_on": bool(u.get("think_on", False)),
+        "active_slot": u.get("active_slot", "milean"),
+        "slots": u.get("slots", {}),
+        "project_name": u.get("project_name", ""),
+        "project_token": u.get("project_token", ""),
+        "last_response": u.get("last_response", ""),
+        "last_thinking": u.get("last_thinking", ""),
+        "last_query": u.get("last_query", ""),
+        "last_codex_task": u.get("last_codex_task", ""),
+    }
+
+
+def _load_user_from_redis(uid: int, bot_id: Optional[int]) -> Optional[dict]:
+    c = _get_redis()
+    if not c:
+        return None
+    try:
+        raw = c.get(_user_state_key(uid, bot_id))
+        if not raw:
+            return None
+        d = json.loads(raw)
+        return d if isinstance(d, dict) else None
+    except Exception:
+        return None
+
+
+def _save_user_to_redis(uid: int, bot_id: Optional[int], u: dict) -> None:
+    c = _get_redis()
+    if not c:
+        return
+    try:
+        c.setex(
+            _user_state_key(uid, bot_id),
+            USER_STATE_TTL_SEC,
+            json.dumps(_serialize_user(u), ensure_ascii=False),
+        )
+    except Exception:
+        pass
+
+
+async def _send_alert(where: str, message: str, min_interval_sec: int = 120) -> None:
+    if not ALERT_BOT_TOKEN or not ALERT_CHAT_ID:
+        return
+    key = f"{where}:{message[:140]}"
+    now = int(time.time())
+    prev = _alert_last_sent.get(key, 0)
+    if now - prev < min_interval_sec:
+        return
+    _alert_last_sent[key] = now
+    text = f"⚠️ MILEAN bot error [{where}]\n{message[:3000]}"
+    url = f"https://api.telegram.org/bot{ALERT_BOT_TOKEN}/sendMessage"
+    payload = {"chat_id": ALERT_CHAT_ID, "text": text}
+    timeout = aiohttp.ClientTimeout(total=8, connect=3)
+    try:
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.post(url, data=payload):
+                pass
+    except Exception:
+        pass
+
+
+def _report_exception(where: str, exc: Exception, extra: Optional[dict] = None) -> None:
+    log.error(f"{where}: {exc}", exc_info=True)
+    if sentry_sdk:
+        try:
+            with sentry_sdk.push_scope() as scope:
+                scope.set_tag("component", where)
+                if extra:
+                    for k, v in extra.items():
+                        scope.set_extra(str(k), v)
+                sentry_sdk.capture_exception(exc)
+        except Exception:
+            pass
+    try:
+        loop = asyncio.get_running_loop()
+        loop.create_task(_send_alert(where, str(exc)))
+    except RuntimeError:
+        pass
 
 
 def _collect_bot_tokens() -> list[str]:
@@ -77,6 +227,10 @@ def _validate_env() -> None:
         raise RuntimeError("Missing required env vars: " + ", ".join(missing))
     if not PPLX_KEY:
         log.warning("PPLX_API_KEY is not set; web search will use DuckDuckGo fallback only.")
+    if not REDIS_URL:
+        log.warning("REDIS_URL is not set; user state will be in-memory only.")
+    if not SENTRY_DSN:
+        log.warning("SENTRY_DSN is not set; exception monitoring is limited to logs.")
 
 # ─── DEFAULT INSTRUCTION ───
 MILEAN_INSTR = """Ты — высококлассный российский юрист и адвокат с практикой более 20 лет.
@@ -117,7 +271,7 @@ users = {}  # f"{bot_id}:{user_id}" -> {hist, files, chunks, instr, ...}
 def get_user(uid: int, bot_id: Optional[int] = None) -> dict:
     key = f"{bot_id}:{uid}" if bot_id is not None else str(uid)
     if key not in users:
-        users[key] = {
+        base = {
             "hist": [],
             "files": [],  # [{name, chunks, chars}]
             "chunks": [],  # [{text, file}]
@@ -133,6 +287,10 @@ def get_user(uid: int, bot_id: Optional[int] = None) -> dict:
             "last_query": "",
             "last_codex_task": "",
         }
+        restored = _load_user_from_redis(uid, bot_id)
+        if isinstance(restored, dict):
+            base.update(restored)
+        users[key] = base
     return users[key]
 
 
@@ -247,10 +405,47 @@ def _needs_web(query: str) -> bool:
 
 
 # ─── PERPLEXITY SEARCH (with internet) ───
-async def perplexity_search(query: str) -> str:
+def _is_legal_query(query: str) -> bool:
+    q = (query or "").lower()
+    return bool(re.search(r"\b(гк|ук|гпк|апк|нк|коап|фз|ст\.?)\b|закон|поправ|изменени|редакц|пленум|постановлен|правов|юрид|судеб|consultant|garant|права", q))
+
+
+def _extract_domains(text: str) -> list[str]:
+    out = []
+    seen = set()
+    if not text:
+        return out
+    for m in re.finditer(r"((?:https?://)?(?:www\.)?[a-z0-9][a-z0-9.-]+\.[a-z]{2,})(?:/[^\s]*)?", text.lower()):
+        d = (m.group(1) or "").strip().replace("https://", "").replace("http://", "")
+        d = d.split("/")[0]
+        if d.startswith("www."):
+            d = d[4:]
+        if d and "." in d and d not in seen:
+            seen.add(d)
+            out.append(d)
+    return out
+
+
+def _legal_domains_from_instruction(instr: str) -> list[str]:
+    out = []
+    seen = set()
+
+    def add(d: str):
+        if d and d not in seen:
+            seen.add(d)
+            out.append(d)
+
+    for d in _extract_domains(instr or ""):
+        add(d)
+    for d in LEGAL_SOURCE_DOMAINS:
+        add(d)
+    return out[:6]
+
+
+async def perplexity_search(query: str, domains: Optional[list[str]] = None) -> tuple[str, list[str]]:
     """Use Perplexity API for internet-powered answers."""
     if not PPLX_KEY:
-        return ""
+        return "", []
     try:
         ssl_ctx = ssl.create_default_context()
         ssl_ctx.check_hostname = False
@@ -263,8 +458,11 @@ async def perplexity_search(query: str) -> str:
                 {"role": "user", "content": query}
             ],
             "max_tokens": 1024,
-            "stream": False
+            "stream": False,
+            "return_citations": True,
         }
+        if domains:
+            payload["search_domain_filter"] = domains[:6]
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {PPLX_KEY}"
@@ -278,39 +476,91 @@ async def perplexity_search(query: str) -> str:
             ) as resp:
                 if resp.status != 200:
                     log.warning(f"Perplexity {resp.status}")
-                    return ""
+                    return "", []
                 data = await resp.json()
                 content = data["choices"][0]["message"].get("content", "")
+                citations = data.get("citations", []) or []
                 if content:
-                    return f"🌐 Информация из интернета:\n{content}"
-                return ""
+                    return f"🌐 Информация из интернета:\n{content}", citations
+                return "", citations
     except Exception as e:
         log.error(f"Perplexity error: {e}")
-        return ""
+        return "", []
 
 
 # ─── DUCKDUCKGO SEARCH (fallback) ───
-async def web_search(query: str) -> str:
+async def web_search(query: str) -> tuple[str, list[str]]:
     try:
         from duckduckgo_search import DDGS
         results = []
+        citations = []
         with DDGS() as ddgs:
             for r in ddgs.text(query, max_results=5):
                 results.append(f"• {r['title']}: {r['body']}")
+                href = (r.get("href") or r.get("url") or "").strip()
+                if href and href not in citations:
+                    citations.append(href)
         if results:
-            return "🌐 Результаты веб-поиска:\n" + "\n".join(results)
-        return ""
+            return "🌐 Результаты веб-поиска:\n" + "\n".join(results), citations
+        return "", citations
     except Exception as e:
         log.error(f"Web search error: {e}")
-        return ""
+        return "", []
 
 
-async def smart_web_search(query: str) -> str:
-    """Try Perplexity first, fallback to DuckDuckGo."""
-    result = await perplexity_search(query)
-    if result:
-        return result
-    return await web_search(query)
+async def smart_web_search(query: str, instr_text: str = "") -> tuple[str, list[str], str]:
+    """Try Perplexity first, fallback to DuckDuckGo.
+    Returns (context, citations, checked_at_utc).
+    """
+    checked_at = time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime())
+    legal_mode = _is_legal_query(query)
+    domains = _legal_domains_from_instruction(instr_text) if legal_mode else []
+
+    # Force legal query refinement for freshest legal amendments.
+    q = query
+    if legal_mode and not re.search(r"поправ|изменени|редакц|на сегодня|действующ", q.lower()):
+        q = f"{query} актуальная редакция на сегодня"
+
+    context_parts = []
+    citations = []
+    seen = set()
+
+    def add_citations(arr: list[str]):
+        for u in arr or []:
+            u = (u or "").strip()
+            if not u or u in seen:
+                continue
+            seen.add(u)
+            citations.append(u)
+
+    # 1) Perplexity general / legal-domain-filtered
+    pplx_ctx, pplx_citations = await perplexity_search(q, domains=domains if domains else None)
+    if pplx_ctx:
+        context_parts.append(pplx_ctx)
+        add_citations(pplx_citations)
+
+    # 2) DDG fallback
+    if not context_parts:
+        ddg_ctx, ddg_citations = await web_search(q)
+        if ddg_ctx:
+            context_parts.append(ddg_ctx)
+            add_citations(ddg_citations)
+
+    # 3) For legal mode, run targeted domain queries for amendments.
+    if legal_mode and domains:
+        for d in domains[:3]:
+            ddg_ctx, ddg_citations = await web_search(f"{q} site:{d}")
+            if ddg_ctx:
+                context_parts.append(f"⚖️ Юр-поиск по {d}:\n{ddg_ctx}")
+                add_citations(ddg_citations)
+
+    if not context_parts:
+        return "", [], checked_at
+
+    lines = ["\n\n".join(context_parts), f"🗓 Дата проверки источников: {checked_at}"]
+    if citations:
+        lines.append("🔗 Источники:\n" + "\n".join(f"- {u}" for u in citations[:12]))
+    return "\n\n".join(lines), citations, checked_at
 
 
 async def codex_enqueue_task(token: str, task: str, msg: Message) -> dict:
@@ -434,6 +684,23 @@ async def call_nvidia(messages: list, think: bool = False, has_docs: bool = Fals
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
 router = Router()
+
+
+class PersistUserMiddleware(BaseMiddleware):
+    async def __call__(self, handler, event, data):
+        result = await handler(event, data)
+        try:
+            from_user = getattr(event, "from_user", None)
+            bot_obj = data.get("bot") or getattr(event, "bot", None)
+            if from_user and bot_obj:
+                u = get_user(from_user.id, bot_obj.id)
+                _save_user_to_redis(from_user.id, bot_obj.id, u)
+        except Exception:
+            pass
+        return result
+
+
+dp.update.middleware(PersistUserMiddleware())
 
 
 class EditInstr(StatesGroup):
@@ -759,7 +1026,7 @@ async def cmd_connect(msg: Message):
         )
 
     except Exception as e:
-        log.error(f"Connect error: {e}")
+        _report_exception("bot.connect", e, {"token": token[:16] if 'token' in locals() else ""})
         await status_msg.edit_text(f"❌ Ошибка подключения: {e}")
 
 
@@ -914,7 +1181,7 @@ async def handle_document(msg: Message):
         )
 
     except Exception as e:
-        log.error(f"File processing error: {e}")
+        _report_exception("bot.file_processing", e, {"file": doc.file_name if 'doc' in locals() else ""})
         await status_msg.edit_text(f"❌ Ошибка обработки: {e}", parse_mode=ParseMode.HTML)
 
 
@@ -927,11 +1194,14 @@ async def handle_message(msg: Message, state: FSMContext):
         return
 
     await msg.bot.send_chat_action(msg.chat.id, ChatAction.TYPING)
-    status_msg = await msg.answer("⏳ Обработка...")
+    status_msg = await msg.answer("⏳ Этап 1/4: подготовка запроса...")
 
     try:
         # Build system message
         sys_parts = []
+        web_citations = []
+        web_checked_at = ""
+        legal_mode = _is_legal_query(query)
 
         # Instruction
         if u["instr"]:
@@ -941,22 +1211,24 @@ async def handle_message(msg: Message, state: FSMContext):
         use_web = u["web_on"] or _needs_web(query)
         has_docs = bool(u["chunks"])
 
-        if use_web and not has_docs:
-            # No documents → search internet for context
-            await status_msg.edit_text("🌐 Поиск в интернете...")
-            web_context = await smart_web_search(query)
+        if use_web:
+            await status_msg.edit_text("🌐 Этап 2/4: поиск и проверка источников...")
+            web_context, web_citations, web_checked_at = await smart_web_search(query, u.get("instr", ""))
             if web_context:
                 sys_parts.append(web_context)
-        elif u["web_on"]:
-            # Web forced on + has docs → still search
-            await status_msg.edit_text("🌐 Поиск в интернете...")
-            web_context = await smart_web_search(query)
-            if web_context:
-                sys_parts.append(web_context)
+                sys_parts.append(
+                    "При формировании ответа используй факты только из найденных веб-источников выше. "
+                    "Укажи дату проверки и не делай категоричных выводов без подтверждающих ссылок."
+                )
+            elif legal_mode:
+                sys_parts.append(
+                    "Не удалось получить подтвержденные свежие источники по правовому запросу. "
+                    "Прямо сообщи об этом и перечисли, какие источники нужно проверить вручную."
+                )
 
         # RAG search
         if u["chunks"]:
-            await status_msg.edit_text("🔍 RAG поиск по файлам...")
+            await status_msg.edit_text("🔍 Этап 2/4: RAG поиск по файлам...")
             relevant = local_search(query, u["chunks"])
             if relevant:
                 rag_parts = []
@@ -967,9 +1239,9 @@ async def handle_message(msg: Message, state: FSMContext):
 
         # Status message based on mode
         if u["think_on"] and has_docs:
-            await status_msg.edit_text("🧠 Глубокий анализ документов (Qwen 397B + Think)...")
+            await status_msg.edit_text("🧠 Этап 3/4: глубокий анализ документов...")
         else:
-            await status_msg.edit_text("🧠 Генерация ответа...")
+            await status_msg.edit_text("🧠 Этап 3/4: генерация ответа...")
 
         # Build messages
         messages = []
@@ -986,6 +1258,22 @@ async def handle_message(msg: Message, state: FSMContext):
         content, thinking = await call_nvidia(messages, think=u["think_on"], has_docs=has_docs)
 
         # Save to history
+        if web_citations:
+            src_lines = "\n".join(f"• {u}" for u in web_citations[:10])
+            stamp = web_checked_at or time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime())
+            content = (
+                content.rstrip()
+                + "\n\n📎 Источники проверки:\n"
+                + src_lines
+                + f"\n🗓 Дата проверки: {stamp}"
+            )
+        elif legal_mode:
+            content = (
+                content.rstrip()
+                + "\n\n⚠️ Примечание: не удалось получить подтвержденные свежие юридические источники в этом сеансе. "
+                  "Проверьте consultant.ru / garant.ru / pravo.gov.ru вручную."
+            )
+
         u["hist"].append({"role": "user", "content": query})
         u["hist"].append({"role": "assistant", "content": content})
 
@@ -994,7 +1282,7 @@ async def handle_message(msg: Message, state: FSMContext):
             u["hist"] = u["hist"][-MAX_HISTORY * 2:]
 
         # Save to user for file generation
-        await status_msg.delete()
+        await status_msg.edit_text("✅ Этап 4/4: ответ готов и отправлен")
 
         # Short preview in chat + full response as file
         preview = content[:300].replace("<", "&lt;").replace(">", "&gt;")
@@ -1040,15 +1328,15 @@ async def handle_message(msg: Message, state: FSMContext):
                 reply_markup=file_kb
             )
 
-    except asyncio.TimeoutError:
-        log.error("NVIDIA API timeout")
+    except asyncio.TimeoutError as e:
+        _report_exception("bot.handle_message.timeout", e, {"query": query[:200]})
         try:
             await status_msg.edit_text("❌ Таймаут — NVIDIA API не ответил. Попробуйте ещё раз или отключите Think (/think)")
         except:
             pass
     except Exception as e:
         err_msg = str(e) or type(e).__name__
-        log.error(f"Message handling error: {err_msg}", exc_info=True)
+        _report_exception("bot.handle_message.error", e, {"query": query[:200]})
         try:
             await status_msg.edit_text(f"❌ Ошибка: {err_msg[:500]}")
         except:
@@ -1392,4 +1680,8 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except Exception as e:
+        _report_exception("bot.main", e)
+        raise
