@@ -44,7 +44,7 @@ NVIDIA_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
 NVIDIA_KEY = os.getenv("NVIDIA_API_KEY", "").strip()
 PPLX_KEY = os.getenv("PPLX_API_KEY", "").strip()
 PPLX_URL = "https://api.perplexity.ai/chat/completions"
-MODEL_HEAVY = "qwen/qwen3.5-397b-a17b"   # For documents + Think
+MODEL_HEAVY = "qwen/qwen3-next-80b-a3b-thinking"   # For documents + Think
 MODEL = "meta/llama-3.1-405b-instruct"     # Primary fast
 MODEL_FAST = "meta/llama-3.3-70b-instruct" # Fallback fast
 PPLX_MODEL = "sonar"                       # Perplexity with internet
@@ -657,12 +657,12 @@ async def _call_model(model: str, messages: list, max_tokens: int = 4096,
 
 async def call_nvidia(messages: list, think: bool = False, has_docs: bool = False) -> tuple:
     """Smart model selection:
-    - Documents + Think → heavy qwen3.5-397b (deep analysis)
+    - Documents + Think → heavy qwen3-next-80b-thinking (deep analysis)
     - Normal → fast 405b → fallback 70b
     """
     if think and has_docs:
         # Heavy model for document analysis with thinking
-        log.info("Using HEAVY model (qwen3.5-397b) for document analysis")
+        log.info("Using HEAVY model (qwen3-next-80b-thinking) for document analysis")
         try:
             return await _call_model(MODEL_HEAVY, messages, max_tokens=8192, timeout_sec=180)
         except Exception as e:
